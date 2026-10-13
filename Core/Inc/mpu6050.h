@@ -14,12 +14,6 @@ typedef struct {
     float temp;      /**< 温度，单位 ℃ */
 } bsp_mpu6050_data_t;
 
-// 最近一次I2C操作，用于定位初始化/读取失败，不参与姿态运算。
-typedef struct {
-    uint8_t reg, status, id;
-    uint32_t error;
-} bsp_mpu6050_status_t;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,7 +22,6 @@ extern "C" {
  * @brief 初始化 MPU6050，量程默认 ±2g / ±250°/s，数字低通 44Hz
  */
 uint8_t bsp_mpu6050_init(void);
-bsp_mpu6050_status_t bsp_mpu6050_status(void);
 
 /**
  * @brief 读取 MPU6050 数据

@@ -1,11 +1,23 @@
-# STM32 电控考核：精简版
+# STM32 电控考核：基础版
 
 保留四项基础要求：TB6612正反转调速、IMU姿态数据、PID速度环、角度外环+速度内环。
 按使用者要求不做OLED和按键。上电不自动转动，控制由串口手动启动。
 
 ## 代码怎么读
 
-这次把连续写在一行的操作展开，使用明确的变量名和普通if/else。行数会增加，但计算步骤能逐句阅读。
+当前按基础难度实现：普通PID、一个串口命令数组、HAL直接发送。去掉条件积分、测量值微分、异步发送状态和详细诊断。
+
+PID只做这几步：
+
+```c
+error = target - actual;            // 误差
+P = kp * error;                     // 当前差多少
+I += ki * error * dt;               // 累加误差
+D = kd * (error - last_error) / dt;  // 误差变化多快
+output = P + I + D;
+```
+
+pid.c额外保留积分和输出限幅，参数仍需实机整定。
 
 **第一次只读这两处：main.c的USER CODE BEGIN 2（启动准备）和USER CODE BEGIN 3（循环执行）。**
 其中`Process_Command`负责把电脑发来的文字转换成目标值，串口回调负责收发字符，可以在理解控制流程后再学习。
@@ -40,7 +52,8 @@ tests/check_cube_main.py对照本次修改前备份校验生成区；以后主�
 4. 串口收发已经合并到main.c的USER CODE BEGIN 4；自写.c文件只剩motor.c和pid.c。
 5. Gitee封装：`mpu6050.c`、`ins.c`直接放在`Core/Src`，`mpu6050.h`、`ins.h`直接放在`Core/Inc`，通过`#include "ins.h"`调用。修改记录见[PORTING.md](docs/mpu6050/PORTING.md)。
 
-主流程直接使用HAL串口函数，没有Serial_Init/Serial_Send/Serial_ReadCommand等包装。
+主流程直接使用HAL串口函数。接收中断收齐一行后交给main，发送直接HAL_UART_Transmit，没有异步TX状态或发送完成回调。
+数字指令用sscanf读取。收到提示后再发下一条指令，q仍可以随时请求停机。
 Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用Motor_Task。
 
 基础版本只有三种运行方式：直接PWM、速度PID、角度PID。
@@ -54,7 +67,7 @@ Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用
 ```
 
 脚本可指定工具链/OpenOCD路径。完整工程包括CubeMX .ioc、启动文件、链接脚本和HAL/CMSIS。
-上电保持IMU静止约2秒，等READY。失败时显示寄存器、HAL状态、I²C错误和芯片ID；发r重新初始化和校准，成功后仍停机，需重新发z设零。
+上电保持IMU静止约2秒，等READY。失败时显示IMU INVALID；发r重新初始化和校准，成功后仍停机，需重新发z设零。
 
 ## 接线
 
@@ -68,7 +81,8 @@ Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用
 | PA13 / PA14 | ST-LINK SWDIO / SWCLK |
 
 沿用已验证的驱动供电/STBY连接，所有模块共地。
-PWM为1kHz；编码器TI12四倍频、16位计数；IMU和控制为100Hz。
+PWM为1kHz；编码器TI12四倍频、16位计数；IMU配置100Hz、控制名义50Hz。
+每20ms尝试计算一次PID，发送数据会占用时间，所以dt仍使用实际采样间隔。
 
 ## VOFA操作
 
@@ -113,6 +127,7 @@ VOFA添加曲线控件，角度选I0/I1，速度选I2/I3。旧版21/22通道布�
 ## 验收与版本管理
 
 `./tests/run.ps1`：验证实际Gitee移植代码参与的六组主机模型测试（需要Python和C编译器）。
+角度测试包含持续输出数据时115200串口发送耗时。当前基础版已编译、模型测试通过，尚未烧录验证真实角度效果。
 [逐项验收](docs/ASSESSMENT.md)、[验证记录](docs/VALIDATION.md)。
 GitHub私有仓库：[tatami-007/STM32-Control-Assessment](https://github.com/tatami-007/STM32-Control-Assessment)。
 保留参考来源与ST HAL/CMSIS的许可证，不将Gitee原代码声明为自己原创。

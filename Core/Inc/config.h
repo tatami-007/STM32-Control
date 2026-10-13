@@ -5,7 +5,7 @@
 #define ENCODER_SIGN (-1)     /* 正PWM时编码器计数的方向 */
 #define ANGLE_USE_ROLL 0      /* 0用pitch，1用roll；电机轴应平行所选IMU轴 */
 #define ANGLE_SIGN (-1)       /* 正PWM时所选姿态角的方向 */
-#define CONTROL_MS 10U        /* 100Hz控制周期 */
+#define CONTROL_MS 20U        /* 每20ms计算一次PID，50Hz控制 */
 #define PWM_LIMIT 500         /* TIM2 ARR=999，最大50%占空比 */
 #define SPEED_LIMIT 30.0f     /* 串口目标速度范围，RPM */
 #define ANGLE_LIMIT 60.0f     /* 串口目标角度范围，°；不是20°自动停机 */

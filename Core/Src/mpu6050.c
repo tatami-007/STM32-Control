@@ -25,37 +25,27 @@ extern I2C_HandleTypeDef hi2c1;
 #define MPU6050_GYRO_SEN  131.0f    // ±250°/s：  LSB/(°/s)
 
 static float gyro_bias[3];  // 陀螺仪零偏，单位 °/s
-static bsp_mpu6050_status_t last_status;
-bsp_mpu6050_status_t bsp_mpu6050_status(void) { return last_status; }
 
 /**
  * @brief 写单个寄存器
  */
 static uint8_t write_reg(uint8_t reg, uint8_t val) {
-    last_status.reg = reg;
-    last_status.status = HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR, reg, I2C_MEMADD_SIZE_8BIT,
-                                         &val, 1, MPU6050_TIMEOUT);
-    last_status.error = HAL_I2C_GetError(&hi2c1);
-    return last_status.status == HAL_OK;
+    return HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR, reg, I2C_MEMADD_SIZE_8BIT,
+                             &val, 1, MPU6050_TIMEOUT) == HAL_OK;
 }
 
 /**
  * @brief 连续读寄存器
  */
 static uint8_t read_reg(uint8_t reg, uint8_t *buf, uint16_t len) {
-    last_status.reg = reg;
-    last_status.status = HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, reg, I2C_MEMADD_SIZE_8BIT,
-                                        buf, len, MPU6050_TIMEOUT);
-    last_status.error = HAL_I2C_GetError(&hi2c1);
-    return last_status.status == HAL_OK;
+    return HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, reg, I2C_MEMADD_SIZE_8BIT,
+                            buf, len, MPU6050_TIMEOUT) == HAL_OK;
 }
 
 uint8_t bsp_mpu6050_init(void) {
-    last_status = (bsp_mpu6050_status_t){0};
     HAL_Delay(50);
     uint8_t id;
     if (!read_reg(MPU6050_REG_WHO_AM_I, &id, 1)) return 0;
-    last_status.id = id;
     if (id != 0x68 && id != 0x70) return 0;
 
     if (!write_reg(MPU6050_REG_PWR_MGMT_1, 0x80)) return 0;   // 复位

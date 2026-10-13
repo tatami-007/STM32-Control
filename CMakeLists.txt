@@ -58,7 +58,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 # 与Gitee示例相同，VOFA用snprintf直接打印浮点，便于学习。
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float "LINKER:--undefined=_scanf_float")
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
