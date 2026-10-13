@@ -12,7 +12,7 @@ tests/check_cube_main.py对照本次修改前备份校验生成区；以后主�
 2. MPU6050按原README调用：`ins_init();`初始化，`ins_data_t *ins=ins_data();`取指针，循环`ins_update();`后读`ins->pitch`、`ins->gyro`等数据。
 3. `motor.c`：PWM与方向；`pid.c`：通用PID。
 4. 串口收发已经合并到main.c的USER CODE BEGIN 4；自写.c文件只剩motor.c和pid.c。
-5. `mpu6050/`：**Gitee原仓库的四个驱动/姿态文件直接移植并参与编译**，保留README总入口`ins.h`。修改记录见[PORTING.md](mpu6050/PORTING.md)。
+5. `Core/Src/mpu6050/`：四个驱动/姿态文件放在main.c同一目录下的子文件夹，实际参与编译，保留README总入口`ins.h`。修改记录见[PORTING.md](Core/Src/mpu6050/PORTING.md)。
 
 主流程直接使用HAL串口函数，没有Serial_Init/Serial_Send/Serial_ReadCommand等包装。
 Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用Motor_Task。

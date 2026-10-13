@@ -7,7 +7,7 @@ try {
     if($LASTEXITCODE){throw 'CubeMX generated main.c changed'}
     & $Python tests/extract_main.py
     if($LASTEXITCODE){throw 'main extraction failed'}
-    & $Gcc -std=c11 -Wall -Wextra -Werror -I. -Ibuild/host-tests -Itests/control_host -ICore/Inc -Impu6050 tests/control_host/app_test.c build/host-tests/main_host.c Core/Src/motor.c Core/Src/pid.c mpu6050/mpu6050.c mpu6050/ins.c -o build/host-tests/app_test.exe
+    & $Gcc -std=c11 -Wall -Wextra -Werror -I. -Ibuild/host-tests -Itests/control_host -ICore/Inc -ICore/Src -ICore/Src/mpu6050 tests/control_host/app_test.c build/host-tests/main_host.c Core/Src/motor.c Core/Src/pid.c Core/Src/mpu6050/mpu6050.c Core/Src/mpu6050/ins.c -o build/host-tests/app_test.exe
     if($LASTEXITCODE){throw 'host build failed'}
     foreach($scenario in @('pwm','speed','angle','fault','serial')) {
         & build/host-tests/app_test.exe $scenario

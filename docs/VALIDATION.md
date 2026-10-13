@@ -4,7 +4,7 @@
 
 ## 软件
 
-- Gitee四个原始文件直接复制到mpu6050后移植，实际参与构建；差异见mpu6050/PORTING.md。
+- Gitee四个原始文件复制后移植，现放在Core/Src/mpu6050，实际参与构建；差异见该目录PORTING.md。
 - 主流程直接在main.c，不再有App_Init/App_Task；按原README直接调用ins_init/ins_data/ins_update。
 - 初学者版进一步移除运行时CPR/辅助指令、定时状态消息、辅助角度函数，主程序净减少89行、串口净减少32行。
 - 指令统一追加换行（急停q例外），PID与采样直接在main.c按1～5注释执行。
