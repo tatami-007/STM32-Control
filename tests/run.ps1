@@ -9,7 +9,7 @@ try {
     if($LASTEXITCODE){throw 'main extraction failed'}
     & $Gcc -std=c11 -Wall -Wextra -Werror -I. -Ibuild/host-tests -Itests/control_host -ICore/Inc tests/control_host/app_test.c build/host-tests/main_host.c Core/Src/motor.c Core/Src/pid.c Core/Src/mpu6050.c Core/Src/ins.c -o build/host-tests/app_test.exe
     if($LASTEXITCODE){throw 'host build failed'}
-    foreach($scenario in @('pwm','speed','angle','fault','serial')) {
+    foreach($scenario in @('pwm','speed','angle','fault','serial','retry')) {
         & build/host-tests/app_test.exe $scenario
         if($LASTEXITCODE){throw "test failed: $scenario"}
     }

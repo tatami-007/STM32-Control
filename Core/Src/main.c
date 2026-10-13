@@ -82,6 +82,7 @@ static void MX_TIM3_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 static void Process_Command(const char *command);
+static void IMU_Error(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -134,7 +135,8 @@ int main(void)
     PID_Init(&angle_pid, 1.5f, 0, 0.05f, ANGLE_SPEED_MAX);   // 角度外环
     last_count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
     last_control = HAL_GetTick();
-    message = ins->raw.valid ? "READY; z=ZERO, q=STOP\r\n" : "IMU INIT FAILED\r\n";
+    message = "READY; z=ZERO, q=STOP\r\n";
+    if (!ins->raw.valid) IMU_Error();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -168,7 +170,7 @@ int main(void)
         // 3. 角度外环：把角度误差转换成目标转速。
         if (mode == ANGLE) {
             if (!ins->raw.valid) { // 读取失败不能继续用错误角度驱动电机
-                mode = STOP; zero_valid = 0; message = "IMU READ FAILED; STOP\r\n";
+                mode = STOP; zero_valid = 0; IMU_Error();
             } else target_speed = PID_Update(&angle_pid, target_angle, actual_angle, dt);
         }
 
@@ -446,6 +448,17 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void IMU_Error(void)
+{
+    static char text[128]; // 异步发送期间保持缓冲区不变
+    message = "IMU INVALID; STOP; SEND r TO RETRY\r\n";
+    if (tx_busy) return;
+    bsp_mpu6050_status_t s = bsp_mpu6050_status();
+    snprintf(text, sizeof(text), "IMU INVALID; reg=0x%02X status=%u error=0x%08lX id=0x%02X; SEND r\r\n",
+             (unsigned)s.reg, (unsigned)s.status, (unsigned long)s.error, (unsigned)s.id);
+    message = text;
+}
+
 /* 只保留考核会用到的命令；所有目标命令添加换行。 */
 static void Process_Command(const char *command)
 {
@@ -453,9 +466,17 @@ static void Process_Command(const char *command)
     if (!strcmp(command, "v")) { stream = 1; message = "RESUMED\r\n"; return; }
     if (!strcmp(command, "q") || !strcmp(command, "0")) {
         mode = STOP; target_speed = 0; Motor_Stop(); message = "STOP\r\n";
+    } else if (!strcmp(command, "r")) {
+        // 重新初始化和静止校准；恢复成功后仍停机，须重新发送z设零。
+        mode = STOP; target_speed = 0; zero_valid = 0; Motor_Stop();
+        HAL_I2C_DeInit(&hi2c1); HAL_I2C_Init(&hi2c1);
+        ins_init();
+        last_control = HAL_GetTick(); speed = 0;
+        message = "IMU READY; SET LEVEL THEN SEND z\r\n";
+        if (!ins_data()->raw.valid) IMU_Error();
     } else if (!strcmp(command, "z")) {
         const ins_data_t *ins = ins_data();
-        if (!ins->raw.valid) { message = "IMU INVALID\r\n"; return; }
+        if (!ins->raw.valid) { IMU_Error(); return; }
         angle_zero = ANGLE_SIGN * (ANGLE_USE_ROLL ? ins->roll : ins->pitch);
         actual_angle = target_angle = 0; zero_valid = 1; mode = ANGLE;
         message = "ZERO SET; HOLD\r\n";
@@ -464,10 +485,11 @@ static void Process_Command(const char *command)
         if (!colon) { message = "USE pwm:300 / speed:3 / angle:5\r\n"; return; }
         char *end; float value = strtof(colon + 1, &end);
         if (end == colon + 1 || *end || !isfinite(value)) { message = "INVALID NUMBER\r\n"; return; }
+        if (!strncmp(command, "angle:", 6) && !zero_valid) { message = "ZERO NOT SET; SEND z (IF IMU INVALID, SEND r)\r\n"; return; }
         if (!strncmp(command, "pwm:", 4) && fabsf(value) <= PWM_LIMIT) { pwm_target = (int)value; mode = PWM; }
         else if (!strncmp(command, "speed:", 6) && fabsf(value) <= SPEED_LIMIT) { target_speed = value; mode = SPEED; }
         else if (!strncmp(command, "angle:", 6) && fabsf(value) <= ANGLE_LIMIT && zero_valid) { target_angle = value; mode = ANGLE; }
-        else { message = "OUT OF RANGE / NEED z\r\n"; return; }
+        else { message = "INVALID COMMAND / OUT OF RANGE\r\n"; return; }
         message = "TARGET SET\r\n";
     }
     // 切换目标时清除上一次PID积分，避免旧输出影响新目标。

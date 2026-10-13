@@ -28,7 +28,7 @@ Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用
 ```
 
 脚本可指定工具链/OpenOCD路径。完整工程包括CubeMX .ioc、启动文件、链接脚本和HAL/CMSIS。
-上电保持IMU静止约2秒，等IMU READY。使用失败时显示IMU INIT FAILED，不会假装正常。
+上电保持IMU静止约2秒，等READY。失败时显示寄存器、HAL状态、I²C错误和芯片ID；发r重新初始化和校准，成功后仍停机，需重新发z设零。
 
 ## 接线
 
@@ -53,6 +53,7 @@ FireWater、COM5（以设备实际端口为准）、115200、8N1、无流控。
 | `pwm:300` / `pwm:-300` | 正/反转30%PWM，范围±500 |
 | `speed:3` / `speed:-3` | 速度PID目标RPM，范围±30 |
 | `z` | 把当前棒位置设零，立即启动0度保持；必须先摆水平并静止 |
+| `r` | 停机，重新初始化IMU并静止校准约2秒；成功后再发z |
 | `angle:5` / `angle:-5` | 相对零点目标角度，范围±60° |
 | `q` / `0` | 停机 |
 | `p` / `v` | 暂停/恢复数值，不影响电机控制 |
@@ -85,7 +86,7 @@ VOFA添加曲线控件，角度选I0/I1，速度选I2/I3。旧版21/22通道布�
 
 ## 验收与版本管理
 
-`./tests/run.ps1`：验证实际Gitee移植代码参与的五组主机模型测试（需要Python和C编译器）。
+`./tests/run.ps1`：验证实际Gitee移植代码参与的六组主机模型测试（需要Python和C编译器）。
 [逐项验收](docs/ASSESSMENT.md)、[验证记录](docs/VALIDATION.md)。
 GitHub私有仓库：[tatami-007/STM32-Control-Assessment](https://github.com/tatami-007/STM32-Control-Assessment)。
 保留参考来源与ST HAL/CMSIS的许可证，不将Gitee原代码声明为自己原创。
