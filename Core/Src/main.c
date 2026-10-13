@@ -56,7 +56,7 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 enum { STOP, PWM, SPEED, ANGLE };   // 停机、直接PWM、速度PID、角度PID
-static int mode = STOP, pwm_target, stream = 1, zero_valid;
+static int mode = STOP, pwm_target, stream = 0, zero_valid; // 默认不刷数值，发v才显示波形
 static PID speed_pid, angle_pid;
 static uint16_t last_count;
 static int32_t total_count;        // 编码器累计计数
