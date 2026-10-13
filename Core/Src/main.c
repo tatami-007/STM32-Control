@@ -67,7 +67,7 @@ static const char *message;
 
 /* 收到一行再交给main处理；中断中不做PID或浮点运算。 */
 static uint8_t rx_byte;
-static char rx_input[32], rx_completed[32], rx_command[32];
+static char rx_input[32], rx_completed[32];
 static unsigned int rx_length;
 static volatile int command_ready, tx_busy, serial_stop;
 static int rx_discard;
@@ -135,7 +135,7 @@ int main(void)
     last_count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
     last_control = HAL_GetTick();
     message = ins->raw.valid ? "READY; z=ZERO, q=STOP\r\n" : "IMU INIT FAILED\r\n";
-/* USER CODE END 2 */
+  /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -147,9 +147,8 @@ int main(void)
     // 1. 接收目标：命令处理只修改mode和目标值。
     if (serial_stop) { serial_stop = 0; command_ready = 0; Process_Command("q"); }
     if (command_ready) {
-        strcpy(rx_command, rx_completed); // 先复制，再允许中断接收下一条命令
+        Process_Command(rx_completed); // 处理结束前，中断不会覆盖这条命令
         command_ready = 0;
-        Process_Command(rx_command);
     }
     uint32_t now = HAL_GetTick();
     if (now - last_control >= CONTROL_MS) {
@@ -181,12 +180,8 @@ int main(void)
 
     // 5. 发给VOFA：I0/I1角度，I2/I3速度，其余为编码器及IMU数据。
     if (!tx_busy) {
-        if (message) {
-            tx_busy = 1;
-            if (HAL_UART_Transmit_IT(&huart1, (uint8_t *)message, strlen(message)) != HAL_OK) tx_busy = 0;
-            message = NULL;
-        }
-        else if (stream && now - last_send >= 50U) {
+        const char *send_text = message; // 提示优先，没有提示再发数值
+        if (!send_text && stream && now - last_send >= 50U) {
             static char text[320]; last_send = now;
             snprintf(text, sizeof(text),
                 "imu:%.2f,%.2f,%.2f,%.2f,%ld,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%u\r\n",
@@ -194,13 +189,17 @@ int main(void)
                 ins->gyro[0], ins->gyro[1], ins->gyro[2],
                 ins->gyro_accel[0], ins->gyro_accel[1], ins->gyro_accel[2],
                 ins->roll, ins->pitch, ins->yaw, mode, (unsigned int)ins->raw.valid);
-            tx_busy = 1; // 异步发送，不等待整帧发完
-            if (HAL_UART_Transmit_IT(&huart1, (uint8_t *)text, strlen(text)) != HAL_OK) tx_busy = 0;
+            send_text = text;
+        }
+        if (send_text) {
+            tx_busy = 1; // 提示和数据共用这一个发送位置
+            if (HAL_UART_Transmit_IT(&huart1, (uint8_t *)send_text, strlen(send_text)) == HAL_OK) message = NULL;
+            else tx_busy = 0;
         }
     }
     HAL_Delay(1);
   }
-/* USER CODE END 3 */
+  /* USER CODE END 3 */
 }
 
 /**
