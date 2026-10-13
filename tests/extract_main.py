@@ -8,9 +8,9 @@ init=block('2').replace('&htim2','pwm').replace('&htim3','enc').replace('&huart1
 init=init.replace('ins_data_t *ins =','ins =')
 loop=block('3').strip()
 assert loop.endswith('}')
-loop=loop[:-1].replace('HAL_Delay(1);','') # 模型自身推进1ms，避免重复推进时间
+loop=loop[:-1].replace('HAL_Delay(1);','').replace('&htim3','test_encoder') # 模型自身推进1ms
 text='#include "main.h"\n'+block('Includes')+block('PV')+block('PFP')+block('0')+block('4')
-text+='\nstatic ins_data_t *ins;\nvoid Test_Init(TIM_HandleTypeDef *pwm,TIM_HandleTypeDef *enc,UART_HandleTypeDef *uart){'+init+'}\n'
+text+='\nstatic ins_data_t *ins;\nstatic TIM_HandleTypeDef *test_encoder;\nvoid Test_Init(TIM_HandleTypeDef *pwm,TIM_HandleTypeDef *enc,UART_HandleTypeDef *uart){test_encoder=enc;'+init+'}\n'
 text+='void Test_Loop(void){'+loop+'}\n'
 (out/'main_host.c').write_text(text,encoding='utf-8')
 (out/'test_main.h').write_text('#include "stm32f1xx_hal.h"\nvoid Test_Init(TIM_HandleTypeDef*,TIM_HandleTypeDef*,UART_HandleTypeDef*);\nvoid Test_Loop(void);\n',encoding='utf-8')

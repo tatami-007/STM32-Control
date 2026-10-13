@@ -55,9 +55,9 @@ int main(int argc,char**argv)
  check(argc==2,"scenario");encoder.Counter=65530;Test_Init(&pwm,&encoder,&uart);send("p\n");run(100);check(Motor_Output()==0,"manual start only");
  if(!strcmp(argv[1],"pwm")){send("pwm:300\n");run(300);check(Motor_Output()==300,"pwm prefix");send("pwm:-300\n");run(30);check(!Motor_Output(),"reverse wait");run(200);check(Motor_Output()==-300,"reverse output");}
  else if(!strcmp(argv[1],"speed")){send("speed:3\n");run(8000);check(fabsf(rpm-3)<0.5f,"forward speed");send("speed:-3\n");run(8000);check(fabsf(rpm+3)<0.5f,"reverse speed");run(35000);check(fabsf(rpm+3)<0.5f,"continuous speed");}
- else if(!strcmp(argv[1],"angle")){send("z");run(100);send("angle:5\n");run(8000);check(fabsf(rotation-5)<1,"angle forward");send("angle:-5\n");run(8000);check(fabsf(rotation+5)<1,"angle reverse");send("angle:0\n");run(8000);base=5;run(10000);check(fabsf(rotation+base)<1,"tilt compensation");}
+ else if(!strcmp(argv[1],"angle")){send("z\n");run(100);send("angle:5\n");run(8000);check(fabsf(rotation-5)<1,"angle forward");send("angle:-5\n");run(8000);check(fabsf(rotation+5)<1,"angle reverse");send("angle:0\n");run(8000);base=5;run(10000);check(fabsf(rotation+base)<1,"tilt compensation");}
  else if(!strcmp(argv[1],"fault")){send("z\n");run(50);send("angle:5\n");run(1000);read_fault=1;run(50);check(Motor_Output()==0,"read failure stops angle");read_fault=0;run(1000);check(Motor_Output()==0,"does not auto resume");}
- else if(!strcmp(argv[1],"serial")){send("cpr:4096\n");run(50);check(strstr(received,"TARGET UPDATED")!=0,"cpr prefix");send("pwm:300\n");run(200);send("speed:nan\n");run(30);check(Motor_Output()==300,"reject NaN");send("unfinishedq");run(5);check(Motor_Output()==0,"q in unfinished line");}
+ else if(!strcmp(argv[1],"serial")){send("pwm:300\n");run(200);check(strstr(received,"TARGET SET")!=0,"command received");send("speed:nan\n");run(30);check(Motor_Output()==300,"reject NaN");send("unfinishedq");run(5);check(Motor_Output()==0,"q in unfinished line");}
  else check(0,"unknown scenario");
  send("q");run(20);check(!Motor_Output(),"stop");printf("PASS %s\n",argv[1]);
 }

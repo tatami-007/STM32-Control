@@ -6,6 +6,8 @@
 
 - Gitee四个原始文件直接复制到mpu6050后移植，实际参与构建；差异见mpu6050/PORTING.md。
 - 主流程直接在main.c，不再有App_Init/App_Task；按原README直接调用ins_init/ins_data/ins_update。
+- 初学者版进一步移除运行时CPR/辅助指令、定时状态消息、辅助角度函数，主程序净减少89行、串口净减少32行。
+- 指令统一追加换行（急停q例外），PID与采样直接在main.c按1～5注释执行。
 - Debug/Release ARM构建通过，无编译警告；RAM约4.6KB，Flash Debug约55KB、Release约45KB。
 - 五组主机模型测试通过，直接提取main.c的USER CODE区测试，连同serial/motor/pid及Gitee移植的mpu6050/ins：
   PWM正反转和换向等待；正负速度及超过30秒持续运行；正负角度及外壳倾斜补偿；
