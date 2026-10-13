@@ -137,7 +137,7 @@ int main(void)
     last_count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
     last_control = HAL_GetTick();
     message = "READY; z=ZERO, q=STOP\r\n";
-    if (!ins->raw.valid) message = "IMU INVALID; KEEP STILL AND SEND r\r\n";
+    if (!ins->raw.valid) message = "IMU INVALID; CHECK POWER/WIRING; SEND r\r\n";
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -181,7 +181,7 @@ int main(void)
             if (!ins->raw.valid) { // 读取失败不能继续用错误角度驱动电机
                 control_mode = STOP;
                 zero_valid = 0;
-                message = "IMU INVALID; STOP; SEND r\r\n";
+                message = "IMU INVALID; STOP; CHECK POWER/WIRING; SEND r\r\n";
             } else {
                 target_speed = PID_Update(&angle_pid, target_angle, actual_angle, dt);
             }
@@ -492,11 +492,11 @@ static void Process_Command(const char *command)
         last_control = HAL_GetTick();
         actual_speed = 0;
         message = "IMU READY; SET LEVEL THEN SEND z\r\n";
-        if (!ins_data()->raw.valid) message = "IMU INVALID; KEEP STILL AND SEND r\r\n";
+        if (!ins_data()->raw.valid) message = "IMU INVALID; CHECK POWER/WIRING; SEND r\r\n";
     } else if (strcmp(command, "z") == 0) {
         const ins_data_t *ins = ins_data();
         if (!ins->raw.valid) {
-            message = "IMU INVALID; KEEP STILL AND SEND r\r\n";
+            message = "IMU INVALID; CHECK POWER/WIRING; SEND r\r\n";
             return;
         }
         float measured_angle = ins->pitch;

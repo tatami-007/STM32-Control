@@ -68,6 +68,7 @@ Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用
 
 脚本可指定工具链/OpenOCD路径。完整工程包括CubeMX .ioc、启动文件、链接脚本和HAL/CMSIS。
 上电保持IMU静止约2秒，等READY。失败时显示IMU INVALID；发r重新初始化和校准，成功后仍停机，需重新发z设零。
+IMU INVALID表示初始化/读取失败，并不等于装置没静止。若r反复失败，先检查模块供电、共地以及SCL/SDA接线。
 
 ## 接线
 
