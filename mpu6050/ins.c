@@ -24,15 +24,14 @@ static uint8_t _first;          // 是否为第一次更新
 static int16_t _yaw_round_count;// 偏航角累计圈数
 static float _yaw_last;         // 上一次的偏航角，用于判断跳变
 
-// 直接移植实验室Gitee代码；改变初始化返回值，避免失败仍参与闭环。
-uint8_t ins_init(void) {
+// 直接移植实验室Gitee代码；对外接口保持README的ins_init/ins_data/ins_update。
+void ins_init(void) {
     _inited = 0;
-    if (!bsp_mpu6050_init() || !bsp_mpu6050_calibrate(200)) return 0;
-
     memset(&_data, 0, sizeof(_data));
+    if (!bsp_mpu6050_init() || !bsp_mpu6050_calibrate(200)) return;
     // 由静止重力初始化，避免单位四元数在倾斜安装下缓慢收敛。
     bsp_mpu6050_data_t raw = bsp_mpu6050_read();
-    if (!raw.valid) return 0;
+    if (!raw.valid) return;
     float roll = atan2f(raw.accel[1], raw.accel[2]);
     float pitch = atan2f(-raw.accel[0], hypotf(raw.accel[1], raw.accel[2]));
     float cr=cosf(roll/2), sr=sinf(roll/2), cp=cosf(pitch/2), sp=sinf(pitch/2);
@@ -45,7 +44,6 @@ uint8_t ins_init(void) {
     _first = 1;
     _last_tick = HAL_GetTick();
     _inited = 1;
-    return 1;
 }
 
 void ins_update(void) {

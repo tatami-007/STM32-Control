@@ -1,4 +1,4 @@
-#include "app.h"
+#include "test_main.h"
 #include "motor.h"
 #include "ins.h"
 #include "config.h"
@@ -48,11 +48,11 @@ static void check(int ok,const char*s){if(!ok){printf("FAIL %s rpm=%.2f rotation
 static void send(const char*s){while(*s){*rx=(uint8_t)*s++;HAL_UART_RxCpltCallback(&uart);}}
 static void run(unsigned int ms)
 {
- for(unsigned int i=0;i<ms;++i,++tick){rpm+=(Motor_Output()*0.05f-rpm)*0.01f;rotation+=rpm*6*0.001f;encoder.Counter=(uint16_t)(65530-lroundf(rotation/360*ENCODER_CPR));App_Task();check(abs(Motor_Output())<=PWM_LIMIT,"PWM bound");}
+ for(unsigned int i=0;i<ms;++i,++tick){rpm+=(Motor_Output()*0.05f-rpm)*0.01f;rotation+=rpm*6*0.001f;encoder.Counter=(uint16_t)(65530-lroundf(rotation/360*ENCODER_CPR));Test_Loop();check(abs(Motor_Output())<=PWM_LIMIT,"PWM bound");}
 }
 int main(int argc,char**argv)
 {
- check(argc==2,"scenario");encoder.Counter=65530;App_Init(&pwm,&encoder,&uart);send("p\n");run(100);check(Motor_Output()==0,"manual start only");
+ check(argc==2,"scenario");encoder.Counter=65530;Test_Init(&pwm,&encoder,&uart);send("p\n");run(100);check(Motor_Output()==0,"manual start only");
  if(!strcmp(argv[1],"pwm")){send("pwm:300\n");run(300);check(Motor_Output()==300,"pwm prefix");send("pwm:-300\n");run(30);check(!Motor_Output(),"reverse wait");run(200);check(Motor_Output()==-300,"reverse output");}
  else if(!strcmp(argv[1],"speed")){send("speed:3\n");run(8000);check(fabsf(rpm-3)<0.5f,"forward speed");send("speed:-3\n");run(8000);check(fabsf(rpm+3)<0.5f,"reverse speed");run(35000);check(fabsf(rpm+3)<0.5f,"continuous speed");}
  else if(!strcmp(argv[1],"angle")){send("z");run(100);send("angle:5\n");run(8000);check(fabsf(rotation-5)<1,"angle forward");send("angle:-5\n");run(8000);check(fabsf(rotation+5)<1,"angle reverse");send("angle:0\n");run(8000);base=5;run(10000);check(fabsf(rotation+base)<1,"tilt compensation");}

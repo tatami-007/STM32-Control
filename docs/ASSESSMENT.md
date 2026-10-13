@@ -16,7 +16,7 @@
 | 外壳沿轴方向转动时棒响应到目标 | 水平z，保持外壳小角度倾斜 | 需实机视频，不能用模拟代替 |
 | VOFA动态目标角度 | angle:5、angle:-5、angle:0 | 已实现，参考点与棒几何关系需摆平 |
 | OLED、按键 | 使用者明确无硬件、不做 | 跳过附加项 |
-| 工程目录/注释 | motor、pid、app、serial、mpu6050/ins | 已实现，固定安装方向 |
+| 工程目录/注释 | main主流程、motor、pid、serial、mpu6050/ins | 已实现，按Gitee README调用 |
 | GitHub/Gitee版本管理 | 本地Git+私有GitHub仓库 | 推送结果见VALIDATION |
 | 两个视频与代码压缩包 | 下方录制步骤 | 用户需拍摄真实装置 |
 

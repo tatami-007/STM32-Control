@@ -5,8 +5,9 @@
 ## 软件
 
 - Gitee四个原始文件直接复制到mpu6050后移植，实际参与构建；差异见mpu6050/PORTING.md。
-- Debug/Release ARM构建通过，无编译警告。Debug Flash 55180B/64KB，Release Flash 44700B/64KB，RAM均4616B/20KB。
-- 五组主机模型测试通过，测试实际app/serial/motor/pid以及Gitee移植的mpu6050/ins：
+- 主流程直接在main.c，不再有App_Init/App_Task；按原README直接调用ins_init/ins_data/ins_update。
+- Debug/Release ARM构建通过，无编译警告；RAM约4.6KB，Flash Debug约55KB、Release约45KB。
+- 五组主机模型测试通过，直接提取main.c的USER CODE区测试，连同serial/motor/pid及Gitee移植的mpu6050/ins：
   PWM正反转和换向等待；正负速度及超过30秒持续运行；正负角度及外壳倾斜补偿；
   I²C读取失败停止且不自动恢复；串口参数解析、NaN拒绝、未完成输入行中q停机。
 - 覆盖16位编码器溢出和I²C读取完成时间晚于主循环入口的时间戳检查。

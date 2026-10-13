@@ -46,7 +46,6 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     mpu6050/mpu6050.c
     mpu6050/ins.c
-    Core/Src/app.c
     Core/Src/serial.c
     Core/Src/pid.c
     Core/Src/motor.c
@@ -54,6 +53,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/mpu6050
     # Add user defined include paths
 )

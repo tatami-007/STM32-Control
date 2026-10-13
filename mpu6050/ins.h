@@ -26,7 +26,7 @@ extern "C" {
 /**
  * @brief 初始化姿态解算（会自动完成陀螺仪零偏校准，期间请保持静止）
  */
-uint8_t ins_init(void);
+void ins_init(void);
 
 /**
  * @brief 执行一次姿态解算，需要周期性调用

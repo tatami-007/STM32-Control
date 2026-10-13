@@ -1,5 +1,4 @@
 #include "serial.h"
-#include "app.h"
 #include <string.h>
 
 /* 中断只收字节，主循环解析；避免在中断里做浮点、PID或长时间发送。 */
@@ -28,13 +27,13 @@ int Serial_Send(const char *text) {
     busy = 0;
     return 0;
 }
-void Serial_Task(void) {
+const char *Serial_ReadCommand(void) {
     if (error) {
         error = 0;
         tail = head;
         length = 0;
         discard = 0;
-        App_Command("q");
+        return "q";
     }
     while (tail != head) {
         char ch = (char)queue[tail];
@@ -43,11 +42,12 @@ void Serial_Task(void) {
         if (ch == 'q' || ch == 'Q') {
             length = 0;
             discard = 0;
-            App_Command("q");
+            return "q";
         } else if (ch == '\n' || ch == '\r') {
             if (length && !discard) {
                 line[length] = 0;
-                App_Command(line);
+                length = 0;
+                return line;
             }
             length = 0;
             discard = 0;
@@ -63,9 +63,10 @@ void Serial_Task(void) {
     // 单字符z/p/v/0无需换行；参数命令要换行，不能把pwm的p误当暂停。
     if (length == 1 && HAL_GetTick() - last_rx >= 30U && strchr("zpvh0", line[0])) {
         line[1] = 0;
-        App_Command(line);
         length = 0;
+        return line;
     }
+    return NULL;
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart) {
     if (uart != port) return;

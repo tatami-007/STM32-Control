@@ -5,11 +5,11 @@
 
 ## 代码怎么读
 
-1. `main.c`：CubeMX初始化，然后App_Init/App_Task。
-2. `app.c`：采样→测速→双环PID→VOFA输出，是主要学习文件。
+1. **`main.c`就是主流程**：USER CODE BEGIN 2初始化；while(1)里按五步注释收指令→采样测速→角度外环→速度内环→VOFA输出。
+2. MPU6050按原README调用：`ins_init();`初始化，`ins_data_t *ins=ins_data();`取指针，循环`ins_update();`后读`ins->pitch`、`ins->gyro`等数据。
 3. `motor.c`：PWM与方向；`pid.c`：通用PID。
-4. `serial.c`：串口收命令与非阻塞发送。
-5. `mpu6050/`：**Gitee原仓库的四个驱动/姿态文件直接移植并参与编译**，保留中文注释。修改记录见[PORTING.md](mpu6050/PORTING.md)。
+4. `serial.c`：串口只收命令/发送字符串，命令由main.c处理。
+5. `mpu6050/`：**Gitee原仓库的四个驱动/姿态文件直接移植并参与编译**，保留README总入口`ins.h`。修改记录见[PORTING.md](mpu6050/PORTING.md)。
 
 没有自动辨轴、启动脉冲、复杂统计校准状态机、±20度停机、600计数停机或30秒超时。
 角度模式仅在IMU读取失败时停止；q手动急停、串口错误停机、PWM限幅和换向等待仍保留。
@@ -74,7 +74,7 @@ VOFA添加曲线控件，角度选I0/I1，速度选I2/I3。旧版21/22通道布�
 - ENCODER_CPR=2112是未核实值。正确RPM必须使用输出轴一圈的四倍频计数：资料线数×4×减速比（注意资料定义）。Gitee仓库没有电机参数。
 - ANGLE_USE_ROLL=0、ANGLE_SIGN=-1：当前用负pitch。IMU相应轴需平行电机轴，且正PWM使实际角度增加；换安装方向需修改配置。精简版不自动处理任意斜装。
 
-角度环输出目标RPM，速度环输出PWM；速度PID初值25/80/0，角度PID初值1.5/0/0.05，均在app.c初始化处。
+角度环输出目标RPM，速度环输出PWM；速度PID初值25/80/0，角度PID初值1.5/0/0.05，均在main.c的USER CODE BEGIN 2处。
 先整定速度环，再整定角度环。小于0.5°且低速时停止输出，不等于退出角度模式。
 主机模型通过不能保证真实电机稳定，尤其CPR、静摩擦和IMU噪声仍需实测。
 
