@@ -66,7 +66,6 @@ static float actual_angle, target_angle, angle_zero; // 角度，单位度
 static const char *message;
 
 /* 收到一行再交给main处理；中断中不做PID或浮点运算。 */
-static UART_HandleTypeDef *serial_port;
 static uint8_t rx_byte;
 static char rx_input[32], rx_completed[32], rx_command[32];
 static unsigned int rx_length;
@@ -83,10 +82,6 @@ static void MX_TIM3_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 static void Process_Command(const char *command);
-static void Serial_Init(UART_HandleTypeDef *uart);
-static int Serial_Busy(void);
-static int Serial_Send(const char *text);
-static const char *Serial_ReadCommand(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -128,7 +123,9 @@ int main(void)
   MX_TIM3_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-    Serial_Init(&huart1);
+    HAL_NVIC_SetPriority(USART1_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
+    HAL_UART_Receive_IT(&huart1, &rx_byte, 1); // 中断接收串口命令
     Motor_Start(&htim2); // 开启PWM，但初始输出为0
     if (HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL) != HAL_OK) Error_Handler();
     ins_init();                      // 按Gitee README：初始化并静止校准
@@ -148,9 +145,12 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     // 1. 接收目标：命令处理只修改mode和目标值。
-    const char *command = Serial_ReadCommand();
-    if (command) Process_Command(command);
-    Motor_Task(); // 执行电机输出；换向时先停100ms
+    if (serial_stop) { serial_stop = 0; command_ready = 0; Process_Command("q"); }
+    if (command_ready) {
+        strcpy(rx_command, rx_completed); // 先复制，再允许中断接收下一条命令
+        command_ready = 0;
+        Process_Command(rx_command);
+    }
     uint32_t now = HAL_GetTick();
     if (now - last_control >= CONTROL_MS) {
         float dt = (now - last_control) / 1000.0f; // 实际采样间隔，秒
@@ -180,8 +180,12 @@ int main(void)
     }
 
     // 5. 发给VOFA：I0/I1角度，I2/I3速度，其余为编码器及IMU数据。
-    if (!Serial_Busy()) {
-        if (message) { Serial_Send(message); message = NULL; }
+    if (!tx_busy) {
+        if (message) {
+            tx_busy = 1;
+            if (HAL_UART_Transmit_IT(&huart1, (uint8_t *)message, strlen(message)) != HAL_OK) tx_busy = 0;
+            message = NULL;
+        }
         else if (stream && now - last_send >= 50U) {
             static char text[320]; last_send = now;
             snprintf(text, sizeof(text),
@@ -190,7 +194,8 @@ int main(void)
                 ins->gyro[0], ins->gyro[1], ins->gyro[2],
                 ins->gyro_accel[0], ins->gyro_accel[1], ins->gyro_accel[2],
                 ins->roll, ins->pitch, ins->yaw, mode, (unsigned int)ins->raw.valid);
-            Serial_Send(text); // 异步发送，不等待整帧发完
+            tx_busy = 1; // 异步发送，不等待整帧发完
+            if (HAL_UART_Transmit_IT(&huart1, (uint8_t *)text, strlen(text)) != HAL_OK) tx_busy = 0;
         }
     }
     HAL_Delay(1);
@@ -470,34 +475,10 @@ static void Process_Command(const char *command)
     Motor_Stop(); PID_Reset(&speed_pid); PID_Reset(&angle_pid);
 }
 
-/* 串口中断与收发辅助代码，主流程仍在上面的while(1)。 */
-static void Serial_Init(UART_HandleTypeDef *uart)
-{
-    serial_port = uart;
-    HAL_NVIC_SetPriority(USART1_IRQn, 2, 0);
-    HAL_NVIC_EnableIRQ(USART1_IRQn);
-    if (HAL_UART_Receive_IT(serial_port, &rx_byte, 1) != HAL_OK) serial_stop = 1;
-}
-static int Serial_Busy(void) { return tx_busy; }
-static int Serial_Send(const char *text)
-{
-    if (tx_busy) return 0;
-    tx_busy = 1;
-    if (HAL_UART_Transmit_IT(serial_port, (uint8_t *)text, (uint16_t)strlen(text)) == HAL_OK) return 1;
-    tx_busy = 0;
-    return 0;
-}
-static const char *Serial_ReadCommand(void)
-{
-    if (serial_stop) { serial_stop = 0; command_ready = 0; return "q"; }
-    if (!command_ready) return NULL;
-    strcpy(rx_command, rx_completed); // ready清除前，中断不会覆盖completed
-    __DMB(); command_ready = 0;
-    return rx_command;
-}
+/* 串口回调：收满一行置标志；q立即请求停机。 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
-    if (uart != serial_port) return;
+    if (uart != &huart1) return;
     if (rx_byte == 'q' || rx_byte == 'Q') { serial_stop = 1; rx_length = 0; rx_discard = 0; }
     else if (rx_byte == '\n' || rx_byte == '\r') {
         if (rx_length && !rx_discard) {
@@ -510,16 +491,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
         if (rx_length < sizeof(rx_input) - 1) rx_input[rx_length++] = (char)rx_byte;
         else { rx_discard = 1; serial_stop = 1; }
     }
-    if (HAL_UART_Receive_IT(serial_port, &rx_byte, 1) != HAL_OK) serial_stop = 1;
+    if (HAL_UART_Receive_IT(&huart1, &rx_byte, 1) != HAL_OK) serial_stop = 1;
 }
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart) { if (uart == serial_port) tx_busy = 0; }
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart) { if (uart == &huart1) tx_busy = 0; }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
-    if (uart != serial_port) return;
+    if (uart != &huart1) return;
     serial_stop = 1;
-    HAL_UART_AbortTransmit(serial_port); tx_busy = 0;
-    HAL_UART_AbortReceive(serial_port);
-    HAL_UART_Receive_IT(serial_port, &rx_byte, 1);
+    HAL_UART_AbortTransmit(&huart1); tx_busy = 0;
+    HAL_UART_AbortReceive(&huart1);
+    HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 }
 /* USER CODE END 4 */
 

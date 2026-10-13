@@ -14,6 +14,9 @@ tests/check_cube_main.py对照本次修改前备份校验生成区；以后主�
 4. 串口收发已经合并到main.c的USER CODE BEGIN 4；自写.c文件只剩motor.c和pid.c。
 5. `mpu6050/`：**Gitee原仓库的四个驱动/姿态文件直接移植并参与编译**，保留README总入口`ins.h`。修改记录见[PORTING.md](mpu6050/PORTING.md)。
 
+主流程直接使用HAL串口函数，没有Serial_Init/Serial_Send/Serial_ReadCommand等包装。
+Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用Motor_Task。
+
 基础版本只有三种运行方式：直接PWM、速度PID、角度PID。
 角度模式仅在IMU读取失败时停止；q手动急停、串口错误停机、PWM限幅和换向等待仍保留。
 
