@@ -1,0 +1,17 @@
+/build/
+/.idea/
+/backups/
+/diagnostics/
+/tmp/
+/references/
+/output/
+*.exe
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.obj
+*.su
+*.log
+__pycache__/
