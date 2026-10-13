@@ -5,6 +5,9 @@
 
 ## 代码怎么读
 
+**精简范围仅限我新增的代码。main.c中USER CODE区域之外的CubeMX代码完整保留，Gitee的封装文件也保留。**
+tests/check_cube_main.py对照本次修改前备份校验生成区；以后主动用CubeMX变更外设配置重新生成时，需核对并更新校验基线。
+
 1. **先看main.c的USER CODE BEGIN 2和while(1)**：初始化后，按1～5的注释执行收指令→读数据→算角度PID→算速度PID→发送数据。下面几百行MX初始化函数是CubeMX生成的，初学时先略过。
 2. MPU6050按原README调用：`ins_init();`初始化，`ins_data_t *ins=ins_data();`取指针，循环`ins_update();`后读`ins->pitch`、`ins->gyro`等数据。
 3. `motor.c`：PWM与方向；`pid.c`：通用PID。

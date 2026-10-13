@@ -117,7 +117,7 @@ int main(void)
   MX_TIM3_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-Serial_Init(&huart1);
+    Serial_Init(&huart1);
     Motor_Start(&htim2); // 开启PWM，但初始输出为0
     if (HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL) != HAL_OK) Error_Handler();
     ins_init();                      // 按Gitee README：初始化并静止校准
@@ -136,7 +136,7 @@ Serial_Init(&huart1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-// 1. 接收目标：命令处理只修改mode和目标值。
+    // 1. 接收目标：命令处理只修改mode和目标值。
     const char *command = Serial_ReadCommand();
     if (command) Process_Command(command);
     Motor_Task(); // 执行电机输出；换向时先停100ms

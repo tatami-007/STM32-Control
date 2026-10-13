@@ -3,6 +3,8 @@ $ErrorActionPreference='Stop'
 Push-Location (Split-Path $PSScriptRoot -Parent)
 try {
     New-Item -ItemType Directory -Force build/host-tests | Out-Null
+    & $Python tests/check_cube_main.py
+    if($LASTEXITCODE){throw 'CubeMX generated main.c changed'}
     & $Python tests/extract_main.py
     if($LASTEXITCODE){throw 'main extraction failed'}
     & $Gcc -std=c11 -Wall -Wextra -Werror -I. -Ibuild/host-tests -Itests/control_host -ICore/Inc -Impu6050 tests/control_host/app_test.c build/host-tests/main_host.c Core/Src/serial.c Core/Src/motor.c Core/Src/pid.c mpu6050/mpu6050.c mpu6050/ins.c -o build/host-tests/app_test.exe
