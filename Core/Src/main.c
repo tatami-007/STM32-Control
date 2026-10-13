@@ -56,14 +56,17 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 enum { STOP, PWM, SPEED, ANGLE };   // 停机、直接PWM、速度PID、角度PID
-static int mode = STOP, pwm_target, stream = 0, zero_valid; // 默认不刷数值，发v才显示波形
+static int control_mode = STOP;   // 当前选择哪一种控制方式
+static int target_pwm;            // pwm指令设置的输出
+static int show_data = 0;         // v显示数值，p暂停显示
+static int zero_valid;            // 是否已经用z设零
 static PID speed_pid, angle_pid;
 static uint16_t last_count;
 static int32_t total_count;        // 编码器累计计数
 static uint32_t last_control, last_send;
-static float speed, target_speed;  // 实际/目标转速，RPM
+static float actual_speed, target_speed;  // 实际/目标转速，RPM
 static float actual_angle, target_angle, angle_zero; // 角度，单位度
-static const char *message;
+static const char *message;       // 等待发给电脑的提示文字
 
 /* 收到一行再交给main处理；中断中不做PID或浮点运算。 */
 static uint8_t rx_byte;
@@ -145,9 +148,13 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-    // 1. 接收目标：命令处理只修改mode和目标值。
-    if (serial_stop) { serial_stop = 0; command_ready = 0; Process_Command("q"); }
+/* USER CODE BEGIN 3 */
+    // 1. 收指令：中断收字符，这里处理收到的整行文字。
+    if (serial_stop) {
+        serial_stop = 0;
+        command_ready = 0;
+        Process_Command("q");
+    }
     if (command_ready) {
         Process_Command(rx_completed); // 处理结束前，中断不会覆盖这条命令
         command_ready = 0;
@@ -159,44 +166,61 @@ int main(void)
 
         // 2. 读取姿态和编码器，计算实际角度、实际转速。
         ins_update(); // Gitee封装自动更新ins中的姿态、角速度、角加速度
-        actual_angle = ANGLE_SIGN * (ANGLE_USE_ROLL ? ins->roll : ins->pitch) - angle_zero;
+        float measured_angle = ins->pitch;
+        if (ANGLE_USE_ROLL) measured_angle = ins->roll;
+        actual_angle = ANGLE_SIGN * measured_angle - angle_zero;
         uint16_t count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
         int16_t delta = (int16_t)(count - last_count); // 16位差值，兼顾计数溢出
         last_count = count;
         total_count += delta * ENCODER_SIGN;
-        float rpm = delta * ENCODER_SIGN * 60.0f / (ENCODER_CPR * dt);
-        speed += dt / (0.04f + dt) * (rpm - speed); // 低通，减小计数抖动
+        float turns = delta * ENCODER_SIGN / ENCODER_CPR; // 这段时间转了几圈
+        float rpm = turns / dt * 60.0f; // 每秒圈数乘60，得到每分钟圈数
+        float filter_weight = dt / (0.04f + dt);
+        actual_speed += filter_weight * (rpm - actual_speed); // 平滑测速，减小抖动
 
         // 3. 角度外环：把角度误差转换成目标转速。
-        if (mode == ANGLE) {
+        if (control_mode == ANGLE) {
             if (!ins->raw.valid) { // 读取失败不能继续用错误角度驱动电机
-                mode = STOP; zero_valid = 0; IMU_Error();
-            } else target_speed = PID_Update(&angle_pid, target_angle, actual_angle, dt);
+                control_mode = STOP;
+                zero_valid = 0;
+                IMU_Error();
+            } else {
+                target_speed = PID_Update(&angle_pid, target_angle, actual_angle, dt);
+            }
         }
 
         // 4. 速度内环：把速度误差转换成PWM。
-        if (mode == STOP) Motor_Stop();
-        else if (mode == PWM) Motor_Set(pwm_target);
-        else Motor_Set((int)PID_Update(&speed_pid, target_speed, speed, dt));
+        if (control_mode == STOP) {
+            Motor_Stop();
+        } else if (control_mode == PWM) {
+            Motor_Set(target_pwm);
+        } else {
+            float pwm_output = PID_Update(&speed_pid, target_speed, actual_speed, dt);
+            Motor_Set((int)pwm_output);
+        }
     }
 
     // 5. 发给VOFA：I0/I1角度，I2/I3速度，其余为编码器及IMU数据。
     if (!tx_busy) {
         const char *send_text = message; // 提示优先，没有提示再发数值
-        if (!send_text && stream && now - last_send >= 50U) {
-            static char text[320]; last_send = now;
+        if (!send_text && show_data && now - last_send >= 50U) {
+            static char text[320]; // 发送完成前，文字必须一直保存在这个数组里
+            last_send = now;
             snprintf(text, sizeof(text),
                 "imu:%.2f,%.2f,%.2f,%.2f,%ld,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%u\r\n",
-                target_angle, actual_angle, target_speed, speed, (long)total_count, Motor_Output(),
+                target_angle, actual_angle, target_speed, actual_speed, (long)total_count, Motor_Output(),
                 ins->gyro[0], ins->gyro[1], ins->gyro[2],
                 ins->gyro_accel[0], ins->gyro_accel[1], ins->gyro_accel[2],
-                ins->roll, ins->pitch, ins->yaw, mode, (unsigned int)ins->raw.valid);
+                ins->roll, ins->pitch, ins->yaw, control_mode, (unsigned int)ins->raw.valid);
             send_text = text;
         }
         if (send_text) {
             tx_busy = 1; // 提示和数据共用这一个发送位置
-            if (HAL_UART_Transmit_IT(&huart1, (uint8_t *)send_text, strlen(send_text)) == HAL_OK) message = NULL;
-            else tx_busy = 0;
+            if (HAL_UART_Transmit_IT(&huart1, (uint8_t *)send_text, strlen(send_text)) == HAL_OK) {
+                message = NULL;
+            } else {
+                tx_busy = 0;
+            }
         }
     }
     HAL_Delay(1);
@@ -462,64 +486,128 @@ static void IMU_Error(void)
 /* 只保留考核会用到的命令；所有目标命令添加换行。 */
 static void Process_Command(const char *command)
 {
-    if (!strcmp(command, "p")) { stream = 0; message = "PAUSED\r\n"; return; }
-    if (!strcmp(command, "v")) { stream = 1; message = "RESUMED\r\n"; return; }
-    if (!strcmp(command, "q") || !strcmp(command, "0")) {
-        mode = STOP; target_speed = 0; Motor_Stop(); message = "STOP\r\n";
-    } else if (!strcmp(command, "r")) {
+    // strcmp返回0表示两段文字相同，例如收到的文字是p。
+    if (strcmp(command, "p") == 0) {
+        show_data = 0;
+        message = "PAUSED\r\n";
+        return;
+    }
+    if (strcmp(command, "v") == 0) {
+        show_data = 1;
+        message = "RESUMED\r\n";
+        return;
+    }
+    if (strcmp(command, "q") == 0 || strcmp(command, "0") == 0) {
+        control_mode = STOP;
+        target_speed = 0;
+        message = "STOP\r\n";
+    } else if (strcmp(command, "r") == 0) {
         // 重新初始化和静止校准；恢复成功后仍停机，须重新发送z设零。
-        mode = STOP; target_speed = 0; zero_valid = 0; Motor_Stop();
-        HAL_I2C_DeInit(&hi2c1); HAL_I2C_Init(&hi2c1);
+        control_mode = STOP;
+        target_speed = 0;
+        zero_valid = 0;
+        Motor_Stop();
+        HAL_I2C_DeInit(&hi2c1);
+        HAL_I2C_Init(&hi2c1);
         ins_init();
-        last_control = HAL_GetTick(); speed = 0;
+        last_control = HAL_GetTick();
+        actual_speed = 0;
         message = "IMU READY; SET LEVEL THEN SEND z\r\n";
         if (!ins_data()->raw.valid) IMU_Error();
-    } else if (!strcmp(command, "z")) {
+    } else if (strcmp(command, "z") == 0) {
         const ins_data_t *ins = ins_data();
-        if (!ins->raw.valid) { IMU_Error(); return; }
-        angle_zero = ANGLE_SIGN * (ANGLE_USE_ROLL ? ins->roll : ins->pitch);
-        actual_angle = target_angle = 0; zero_valid = 1; mode = ANGLE;
+        if (!ins->raw.valid) {
+            IMU_Error();
+            return;
+        }
+        float measured_angle = ins->pitch;
+        if (ANGLE_USE_ROLL) measured_angle = ins->roll;
+        angle_zero = ANGLE_SIGN * measured_angle;
+        actual_angle = 0;
+        target_angle = 0;
+        zero_valid = 1;
+        control_mode = ANGLE;
         message = "ZERO SET; HOLD\r\n";
     } else {
+        // 带数值的命令：先找到冒号，再把冒号后的文字转换成数字。
         const char *colon = strchr(command, ':');
-        if (!colon) { message = "USE pwm:300 / speed:3 / angle:5\r\n"; return; }
-        char *end; float value = strtof(colon + 1, &end);
-        if (end == colon + 1 || *end || !isfinite(value)) { message = "INVALID NUMBER\r\n"; return; }
-        if (!strncmp(command, "angle:", 6) && !zero_valid) { message = "ZERO NOT SET; SEND z (IF IMU INVALID, SEND r)\r\n"; return; }
-        if (!strncmp(command, "pwm:", 4) && fabsf(value) <= PWM_LIMIT) { pwm_target = (int)value; mode = PWM; }
-        else if (!strncmp(command, "speed:", 6) && fabsf(value) <= SPEED_LIMIT) { target_speed = value; mode = SPEED; }
-        else if (!strncmp(command, "angle:", 6) && fabsf(value) <= ANGLE_LIMIT && zero_valid) { target_angle = value; mode = ANGLE; }
-        else { message = "INVALID COMMAND / OUT OF RANGE\r\n"; return; }
+        if (!colon) {
+            message = "USE pwm:300 / speed:3 / angle:5\r\n";
+            return;
+        }
+        char *end;
+        float value = strtof(colon + 1, &end);
+        // 没有数字、数字后还有乱码、或数字为NaN/无穷大，都不执行。
+        if (end == colon + 1 || *end != '\0' || !isfinite(value)) {
+            message = "INVALID NUMBER\r\n";
+            return;
+        }
+        if (strncmp(command, "angle:", 6) == 0 && !zero_valid) {
+            message = "ZERO NOT SET; SEND z (IF IMU INVALID, SEND r)\r\n";
+            return;
+        }
+        // strncmp(...,4)==0表示前4个字符是pwm:，其他命令同理。
+        if (strncmp(command, "pwm:", 4) == 0 && fabsf(value) <= PWM_LIMIT) {
+            target_pwm = (int)value;
+            control_mode = PWM;
+        } else if (strncmp(command, "speed:", 6) == 0 && fabsf(value) <= SPEED_LIMIT) {
+            target_speed = value;
+            control_mode = SPEED;
+        } else if (strncmp(command, "angle:", 6) == 0 && fabsf(value) <= ANGLE_LIMIT) {
+            target_angle = value;
+            control_mode = ANGLE;
+        } else {
+            message = "INVALID COMMAND / OUT OF RANGE\r\n";
+            return;
+        }
         message = "TARGET SET\r\n";
     }
     // 切换目标时清除上一次PID积分，避免旧输出影响新目标。
-    Motor_Stop(); PID_Reset(&speed_pid); PID_Reset(&angle_pid);
+    Motor_Stop();
+    PID_Reset(&speed_pid);
+    PID_Reset(&angle_pid);
 }
 
 /* 串口回调：收满一行置标志；q立即请求停机。 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
     if (uart != &huart1) return;
-    if (rx_byte == 'q' || rx_byte == 'Q') { serial_stop = 1; rx_length = 0; rx_discard = 0; }
+    if (rx_byte == 'q' || rx_byte == 'Q') {
+        serial_stop = 1;
+        rx_length = 0;
+        rx_discard = 0;
+    }
     else if (rx_byte == '\n' || rx_byte == '\r') {
         if (rx_length && !rx_discard) {
             rx_input[rx_length] = 0;
             if (command_ready) serial_stop = 1; // 上一条未处理，停机而不是执行残缺命令
-            else { strcpy(rx_completed, rx_input); __DMB(); command_ready = 1; }
+            else {
+                strcpy(rx_completed, rx_input);
+                __DMB(); // 先完成复制，再通知main可以读这行命令
+                command_ready = 1;
+            }
         }
-        rx_length = 0; rx_discard = 0;
+        rx_length = 0;
+        rx_discard = 0;
     } else if (!rx_discard) {
         if (rx_length < sizeof(rx_input) - 1) rx_input[rx_length++] = (char)rx_byte;
-        else { rx_discard = 1; serial_stop = 1; }
+        else {
+            rx_discard = 1;
+            serial_stop = 1;
+        }
     }
     if (HAL_UART_Receive_IT(&huart1, &rx_byte, 1) != HAL_OK) serial_stop = 1;
 }
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart) { if (uart == &huart1) tx_busy = 0; }
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart)
+{
+    if (uart == &huart1) tx_busy = 0;
+}
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
     if (uart != &huart1) return;
     serial_stop = 1;
-    HAL_UART_AbortTransmit(&huart1); tx_busy = 0;
+    HAL_UART_AbortTransmit(&huart1);
+    tx_busy = 0;
     HAL_UART_AbortReceive(&huart1);
     HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 }

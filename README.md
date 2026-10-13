@@ -5,6 +5,32 @@
 
 ## 代码怎么读
 
+这次把连续写在一行的操作展开，使用明确的变量名和普通if/else。行数会增加，但计算步骤能逐句阅读。
+
+**第一次只读这两处：main.c的USER CODE BEGIN 2（启动准备）和USER CODE BEGIN 3（循环执行）。**
+其中`Process_Command`负责把电脑发来的文字转换成目标值，串口回调负责收发字符，可以在理解控制流程后再学习。
+
+| 变量 | 含义 |
+|---|---|
+| control_mode | 当前是停机、直接PWM、速度控制还是角度控制 |
+| target_angle / actual_angle | 希望达到的角度 / 现在的角度 |
+| target_speed / actual_speed | 希望达到的转速 / 编码器测到的转速 |
+| target_pwm | 直接PWM模式的输出，正数正转、负数反转 |
+| dt | 上次控制到本次控制经过的秒数 |
+| ins->pitch | ins指向的传感器数据中的俯仰角 |
+| show_data | 是否向VOFA连续发送数值 |
+
+两层PID最核心的计算是：
+
+```c
+target_speed = PID_Update(&angle_pid, target_angle, actual_angle, dt);
+float pwm_output = PID_Update(&speed_pid, target_speed, actual_speed, dt);
+Motor_Set((int)pwm_output);
+```
+
+第一句根据角度误差决定需要多快，第二句根据速度误差决定PWM，第三句把PWM输出到电机。
+`pid.c`按P、I、D分别计算；`motor.c`用if/else明确设置正反转引脚。
+
 **精简范围仅限我新增的代码。main.c中USER CODE区域之外的CubeMX代码完整保留，Gitee的封装文件也保留。**
 tests/check_cube_main.py对照本次修改前备份校验生成区；以后主动用CubeMX变更外设配置重新生成时，需核对并更新校验基线。
 
