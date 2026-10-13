@@ -10,7 +10,8 @@
 - 指令统一追加换行（急停q例外），PID与采样直接在main.c按1～5注释执行。
 - main.c生成区与before_assessment_rewrite备份逐段一致，SystemClock_Config、MX_I2C1_Init、MX_TIM2_Init、MX_TIM3_Init、MX_USART1_UART_Init、MX_GPIO_Init和Error_Handler完整保留；校验纳入测试入口。
 - Debug/Release ARM构建通过，无编译警告；RAM约4.6KB，Flash Debug约55KB、Release约45KB。
-- 五组主机模型测试通过，直接提取main.c的USER CODE区测试，连同serial/motor/pid及Gitee移植的mpu6050/ins：
+- 串口收发已合并到main.c，serial.c/.h删除；CubeMX生成文件全部保留，自写.c文件只剩motor.c/pid.c。
+- 五组主机模型测试通过，直接提取main.c的USER CODE区测试，连同motor/pid及Gitee移植的mpu6050/ins：
   PWM正反转和换向等待；正负速度及超过30秒持续运行；正负角度及外壳倾斜补偿；
   I²C读取失败停止且不自动恢复；串口参数解析、NaN拒绝、未完成输入行中q停机。
 - 覆盖16位编码器溢出和I²C读取完成时间晚于主循环入口的时间戳检查。

@@ -46,7 +46,6 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     mpu6050/mpu6050.c
     mpu6050/ins.c
-    Core/Src/serial.c
     Core/Src/pid.c
     Core/Src/motor.c
 )

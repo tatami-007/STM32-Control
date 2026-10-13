@@ -11,7 +11,7 @@ tests/check_cube_main.py对照本次修改前备份校验生成区；以后主�
 1. **先看main.c的USER CODE BEGIN 2和while(1)**：初始化后，按1～5的注释执行收指令→读数据→算角度PID→算速度PID→发送数据。下面几百行MX初始化函数是CubeMX生成的，初学时先略过。
 2. MPU6050按原README调用：`ins_init();`初始化，`ins_data_t *ins=ins_data();`取指针，循环`ins_update();`后读`ins->pitch`、`ins->gyro`等数据。
 3. `motor.c`：PWM与方向；`pid.c`：通用PID。
-4. `serial.c`：串口只收命令/发送字符串，命令由main.c处理。
+4. 串口收发已经合并到main.c的USER CODE BEGIN 4；自写.c文件只剩motor.c和pid.c。
 5. `mpu6050/`：**Gitee原仓库的四个驱动/姿态文件直接移植并参与编译**，保留README总入口`ins.h`。修改记录见[PORTING.md](mpu6050/PORTING.md)。
 
 基础版本只有三种运行方式：直接PWM、速度PID、角度PID。
