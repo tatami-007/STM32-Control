@@ -24,7 +24,7 @@
 #include "config.h"
 #include "motor.h"
 #include "pid.h"
-#include "mpu6050/ins.h"
+#include "ins.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
