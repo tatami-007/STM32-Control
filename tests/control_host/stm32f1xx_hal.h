@@ -16,10 +16,14 @@ typedef enum {HAL_OK,HAL_ERROR,HAL_BUSY,HAL_TIMEOUT} HAL_StatusTypeDef;
 #define GPIO_PIN_SET 1
 #define GPIO_PIN_RESET 0
 #define USART1_IRQn 0
+#define I2C_MEMADD_SIZE_8BIT 1
 #define __DMB() ((void)0)
 #define __HAL_TIM_GET_COUNTER(t) ((t)->Counter)
 #define __HAL_TIM_SET_COMPARE(t,c,v) ((t)->Compare=(v))
 uint32_t HAL_GetTick(void);
+void HAL_Delay(uint32_t);
+HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef*,uint16_t,uint16_t,uint16_t,uint8_t*,uint16_t,uint32_t);
+HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef*,uint16_t,uint16_t,uint16_t,uint8_t*,uint16_t,uint32_t);
 HAL_StatusTypeDef HAL_TIM_PWM_Start(TIM_HandleTypeDef*,int);
 HAL_StatusTypeDef HAL_TIM_Encoder_Start(TIM_HandleTypeDef*,int);
 HAL_StatusTypeDef HAL_UART_Transmit(UART_HandleTypeDef*,uint8_t*,uint16_t,uint32_t);

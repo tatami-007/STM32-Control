@@ -21,9 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "imu.h"
-#include "control.h"
-#include "vofa.h"
+#include "app.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -105,9 +103,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0 | GPIO_PIN_1, GPIO_PIN_RESET);
-  /* 先启动UART和电机零输出，再启动IMU；上电不自动转动。 */
-  Control_Start(&htim2, &htim3, &huart1);
-  IMU_Start(&hi2c1, &huart1);
+  /* 开始时电机停止；Gitee IMU封装静止校准约2秒。 */
+  App_Init(&htim2, &htim3, &huart1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -117,9 +114,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    VOFA_Task(); /* 接收目标命令、启动非阻塞发送 */
-    IMU_Task();  /* 200Hz采样、静止校准、Mahony姿态解算 */
-    Control_Task();
+    App_Task(); /* 收目标 → IMU/编码器采样 → 双环PID → VOFA输出 */
     HAL_Delay(1);
   }
   /* USER CODE END 3 */

@@ -44,19 +44,22 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    Core/Src/imu.c
-    Core/Src/ins.c
-    Core/Src/vofa.c
-    Core/Src/axis.c
+    mpu6050/mpu6050.c
+    mpu6050/ins.c
+    Core/Src/app.c
+    Core/Src/serial.c
     Core/Src/pid.c
     Core/Src/motor.c
-    Core/Src/control.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/mpu6050
     # Add user defined include paths
 )
+
+# 与Gitee示例相同，VOFA用snprintf直接打印浮点，便于学习。
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
