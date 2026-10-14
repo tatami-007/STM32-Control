@@ -59,13 +59,29 @@ static void run(unsigned int ms)
  uint32_t started=tick;
  while(tick-started<ms){Test_Loop();advance(1);check(abs(Motor_Output())<=PWM_LIMIT,"PWM bound");}
 }
+static void check_speed_frame(float target)
+{
+ const char *frame=strstr(received,"imu:");
+ float target_angle,actual_angle,target_rpm,actual_rpm;
+ check(frame && sscanf(frame,"imu:%f,%f,%f,%f",&target_angle,&actual_angle,&target_rpm,&actual_rpm)==4,"VOFA frame readable");
+ check(fabsf(target_rpm-target)<0.01f,"VOFA target RPM channel");
+ check(fabsf(actual_rpm-target)<0.5f,"VOFA actual RPM channel");
+}
 int main(int argc,char**argv)
 {
  check(argc==2,"scenario");
  if(!strcmp(argv[1],"retry"))read_fault=1; // 上电I2C失败，不能假装有姿态
  encoder.Counter=65530;Test_Init(&pwm,&encoder,&uart);send("p\n");run(100);check(Motor_Output()==0,"manual start only");
  if(!strcmp(argv[1],"pwm")){send("pwm:300\n");run(300);check(Motor_Output()==300,"pwm prefix");send("pwm:-300\n");run(30);check(!Motor_Output(),"reverse wait");run(200);check(Motor_Output()==-300,"reverse output");}
- else if(!strcmp(argv[1],"speed")){send("speed:3\n");run(8000);check(fabsf(rpm-3)<0.5f,"forward speed");send("speed:-3\n");run(8000);check(fabsf(rpm+3)<0.5f,"reverse speed");run(35000);check(fabsf(rpm+3)<0.5f,"continuous speed");}
+ else if(!strcmp(argv[1],"speed")){
+   send("speed:3\n");run(8000);check(fabsf(rpm-3)<0.5f,"forward speed");
+   received[0]=0;send("v\n");run(100);check_speed_frame(3);
+   received[0]=0;bus_stuck=1;run(300);check_speed_frame(3); // I2C耗时不能让编码器测速虚高
+   bus_stuck=0;run(1000);
+   send("speed:-3\n");run(8000);check(fabsf(rpm+3)<0.5f,"reverse speed");
+   received[0]=0;run(100);check_speed_frame(-3);
+   run(35000);check(fabsf(rpm+3)<0.5f,"continuous speed");
+ }
  else if(!strcmp(argv[1],"angle")){send("v\n");run(50);send("z\n");run(100);send("angle:5\n");run(8000);check(fabsf(rotation-5)<1,"angle forward with telemetry timing");send("angle:-5\n");run(8000);check(fabsf(rotation+5)<1,"angle reverse");send("angle:0\n");run(8000);base=5;run(10000);check(fabsf(rotation+base)<1,"tilt compensation");}
  else if(!strcmp(argv[1],"fault")){
    send("z\n");run(50);send("angle:5\n");run(500);

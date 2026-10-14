@@ -161,12 +161,11 @@ int main(void)
     }
     uint32_t now = HAL_GetTick();
     if (now - last_control >= CONTROL_MS) {
-        float dt = (now - last_control) / 1000.0f; // 实际采样间隔，秒
-        last_control = now;
-
         // 2. 读取姿态和编码器，计算实际角度、实际转速。
         ins_update();
         uint32_t imu_now = HAL_GetTick();
+        float dt = (imu_now - last_control) / 1000.0f; // 采样间隔包含I2C读取耗时
+        last_control = imu_now;
         int imu_expired = imu_now - last_imu_ok > 200U; // 最多允许短暂中断200ms
         if (ins->raw.valid) last_imu_ok = imu_now;
         actual_angle = ANGLE_SIGN * ins->pitch - angle_zero; // 当前装置用pitch控制
