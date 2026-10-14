@@ -1,141 +1,110 @@
-# STM32 电控考核：基础版
+# STM32 电控考核
 
-保留四项基础要求：TB6612正反转调速、IMU姿态数据、PID速度环、角度外环+速度内环。
-按使用者要求不做OLED和按键。上电不自动转动，控制由串口手动启动。
+基于 STM32F103C8T6、TB6612 和 MPU6050 的电机控制工程，使用编码器测速，通过 VOFA+ 设置目标并查看数据。
 
-## 代码怎么读
+## 功能
 
-当前按基础难度实现：普通PID、一个串口命令数组、HAL直接发送。去掉条件积分、测量值微分、异步发送状态和详细诊断。
+- PWM 正反转与调速。
+- 编码器测速，PID 速度闭环。
+- IMU 数据采集与姿态解算，输出角速度、角加速度和欧拉角。
+- 角度 PID 外环配合速度内环，控制电机轴上雪糕棒的角度。
 
-PID只做这几步：
+## 硬件接线
 
-```c
-error = target - actual;            // 误差
-P = kp * error;                     // 当前差多少
-I += ki * error * dt;               // 累加误差
-D = kd * (error - last_error) / dt;  // 误差变化多快
-output = P + I + D;
-```
+| STM32 引脚 | 连接 |
+| --- | --- |
+| PA0 / TIM2_CH1 | TB6612 PWMA |
+| PB0 / PB1 | TB6612 AIN1 / AIN2 |
+| PA6 / PA7 / TIM3 | 编码器 A / B |
+| PB6 / PB7 / I2C1 | IMU SCL / SDA，AD0 接地 |
+| PA9 / PA10 / USART1 | USB 转串口模块 RX / TX |
+| PA13 / PA14 | ST-LINK SWDIO / SWCLK |
 
-pid.c额外保留积分和输出限幅，参数仍需实机整定。
-
-**第一次只读这两处：main.c的USER CODE BEGIN 2（启动准备）和USER CODE BEGIN 3（循环执行）。**
-PID参数在同一个main.c的USER CODE BEGIN PV：`.kp = 25`表示比例参数为25，`.ki`是积分参数，`.kd`是微分参数，`.limit`是输出上限。直接初始化这两个PID变量，不再额外调用PID_Init。
-其中`Process_Command`负责把电脑发来的文字转换成目标值，串口回调负责收发字符，可以在理解控制流程后再学习。
-
-| 变量 | 含义 |
-|---|---|
-| control_mode | 当前是停机、直接PWM、速度控制还是角度控制 |
-| target_angle / actual_angle | 希望达到的角度 / 现在的角度 |
-| target_speed / actual_speed | 希望达到的转速 / 编码器测到的转速 |
-| target_pwm | 直接PWM模式的输出，正数正转、负数反转 |
-| dt | 上次控制到本次控制经过的秒数 |
-| ins->pitch | ins指向的传感器数据中的俯仰角 |
-| show_data | 是否向VOFA连续发送数值 |
-
-两层PID最核心的计算是：
-
-```c
-target_speed = PID_Update(&angle_pid, target_angle, actual_angle, dt);
-float pwm_output = PID_Update(&speed_pid, target_speed, actual_speed, dt);
-Motor_Set((int)pwm_output);
-```
-
-第一句根据角度误差决定需要多快，第二句根据速度误差决定PWM，第三句把PWM输出到电机。
-`pid.c`按P、I、D分别计算；`motor.c`用if/else明确设置正反转引脚。
-
-**精简范围仅限我新增的代码。main.c中USER CODE区域之外的CubeMX代码完整保留，Gitee的封装文件也保留。**
-tests/check_cube_main.py对照本次修改前备份校验生成区；以后主动用CubeMX变更外设配置重新生成时，需核对并更新校验基线。
-
-1. **先看main.c的USER CODE BEGIN 2和while(1)**：初始化后，按1～5的注释执行收指令→读数据→算角度PID→算速度PID→发送数据。下面几百行MX初始化函数是CubeMX生成的，初学时先略过。
-2. MPU6050按原README调用：`ins_init();`初始化，`ins_data_t *ins=ins_data();`取指针，循环`ins_update();`后读`ins->pitch`、`ins->gyro`等数据。
-3. `motor.c`：PWM与方向；`pid.c`：通用PID。
-4. 串口收发已经合并到main.c的USER CODE BEGIN 4；自写.c文件只剩motor.c和pid.c。
-5. Gitee封装：`mpu6050.c`、`ins.c`直接放在`Core/Src`，`mpu6050.h`、`ins.h`直接放在`Core/Inc`，通过`#include "ins.h"`调用。修改记录见[PORTING.md](docs/mpu6050/PORTING.md)。
-
-主流程直接使用HAL串口函数。接收中断收齐一行后交给main，发送直接HAL_UART_Transmit，没有异步TX状态或发送完成回调。
-数字指令用sscanf读取。收到提示后再发下一条指令，q仍可以随时请求停机。
-Motor_Set直接执行PWM输出，换向仍保留100ms停顿；无需另外调用Motor_Task。
-
-基础版本只有三种运行方式：直接PWM、速度PID、角度PID。
-角度模式遇到偶发IMU读取失败会暂停输出、重置I2C，200ms内恢复就自动继续，保留零点和目标。超过200ms没有有效姿态才退出控制；q手动急停、串口错误停机、PWM限幅和换向等待仍保留。
+所有模块共地，TB6612 的 VM、VCC 和 STBY 需正确连接。IMU 固定在棒上，pitch 转轴与电机输出轴平行。
 
 ## 构建与烧录
 
+开发环境为 Windows PowerShell，需要 CMake 3.22 及以上、Ninja、GNU Arm 工具链和 OpenOCD。
+
+在工程根目录执行：
+
 ```powershell
-./tools/build.ps1 -Preset Release
-./tools/flash.ps1 -Preset Release
+.\tools\build.ps1 -Preset Debug
+.\tools\flash.ps1 -Preset Debug
 ```
 
-脚本可指定工具链/OpenOCD路径。完整工程包括CubeMX .ioc、启动文件、链接脚本和HAL/CMSIS。
-上电保持IMU静止约2秒，等READY。失败时显示IMU INVALID；发r重新初始化和校准，成功后仍停机，需重新发z设零。
-IMU INVALID表示初始化/读取失败，并不等于装置没静止。若r反复失败，先检查模块供电、共地以及SCL/SDA接线。
+烧录使用 ST-LINK。构建产物为 `build/Debug/STM32_Control.elf`，将 `Debug` 换成 `Release` 可构建发布版本。工具路径不同，可用 `-ToolchainBin` 和 `-OpenOcdRoot` 分别指定编译器目录与 OpenOCD 根目录。
 
-## 接线
+## 使用
 
-| 引脚 | 连接 |
-|---|---|
-| PA0 / TIM2_CH1 | TB6612 PWMA |
-| PB0 / PB1 | AIN1 / AIN2 |
-| PA6 / PA7 / TIM3 | 编码器A / B |
-| PB6 / PB7 / I2C1 | IMU SCL / SDA，AD0接地 |
-| PA9 / PA10 / USART1 | USB串口RX / TX，交叉连接 |
-| PA13 / PA14 | ST-LINK SWDIO / SWCLK |
+上电后保持电机和 IMU 静止约 2 秒，等待 `READY`。程序不会自动启动电机。
 
-沿用已验证的驱动供电/STBY连接，所有模块共地。
-PWM为1kHz；编码器TI12四倍频、16位计数；IMU配置100Hz、控制名义50Hz。
-每20ms尝试计算一次PID，发送数据会占用时间，所以dt仍使用实际采样间隔。
-
-## VOFA操作
-
-FireWater、COM5（以设备实际端口为准）、115200、8N1、无流控。
+VOFA+ 选择 **FireWater**，打开设备对应串口，设置为 **115200、8N1、无流控**。发送框追加 LF 或 CRLF；`q` 无需换行。
 
 | 指令 | 作用 |
-|---|---|
-| `pwm:300` / `pwm:-300` | 正/反转30%PWM，范围±500 |
-| `speed:3` / `speed:-3` | 速度PID目标RPM，范围±30 |
-| `z` | 把当前棒位置设零，立即启动0度保持；必须先摆水平并静止 |
-| `r` | 停机，重新初始化IMU并静止校准约2秒；成功后再发z |
-| `angle:5` / `angle:-5` | 相对零点目标角度，范围±60° |
-| `q` / `0` | 停机 |
-| `p` / `v` | 暂停/恢复数值，不影响电机控制 |
+| --- | --- |
+| `pwm:300` / `pwm:-300` | 正转 / 反转，约 30% 占空比，范围 −500～500 |
+| `speed:3` / `speed:-3` | 设置目标转速，单位 RPM，范围 −30～30 |
+| `z` | 将当前位置设为零点，立即启动 0° 保持；发送前把棒摆水平并保持静止 |
+| `angle:5` / `angle:-5` | 设置相对零点的目标角度，范围 −60°～60°；需先发送 `z` |
+| `q` / `0` | 停止电机 |
+| `r` | 停机并重新初始化、校准 IMU；成功后重新发送 `z` |
+| `v` / `p` | 显示 / 暂停连续数据，不影响控制 |
 
-**除急停q外，所有指令都追加LF或CRLF**。发送框例如填speed:3，并选择追加换行。
-默认只显示启动/命令/故障提示。发v显示曲线数值，发p暂停数值，避免刷走提示；不影响电机控制。
+发送一条指令后，等收到提示再发送下一条。默认只显示提示文字，发送 `v` 才会连续输出数据。
 
-| 通道 | 含义 |
-|---|---|
-| I0 / I1 | 目标角度 / 实际角度，° |
-| I2 / I3 | 目标速度 / 实际速度，RPM |
-| I4 / I5 | 累计编码器计数 / PWM（-500～500） |
-| I6～I8 | XYZ角速度，°/s |
-| I9～I11 | XYZ角加速度，°/s² |
-| I12～I14 | roll / pitch / yaw，°（六轴yaw会漂移） |
-| I15 / I16 | 模式0停机/1PWM/2速度/3角度，IMU读取有效标志 |
+测速时先发送 `speed:3`，再发送 `v`，将曲线绑定到 I2、I3。角度控制先摆平并发送 `z`，随后发送 `angle:5`，查看 I0、I1。
 
-VOFA添加曲线控件，角度选I0/I1，速度选I2/I3。旧版21/22通道布局已删除。
+## VOFA+ 数据通道
 
-## 必须确认的两个配置
+| 通道 | 数据 | 单位 |
+| --- | --- | --- |
+| I0 / I1 | 目标角度 / 实际角度 | ° |
+| I2 / I3 | 目标速度 / 实际速度 | RPM |
+| I4 / I5 | 累计编码器计数 / PWM 输出 | 计数 / −500～500 |
+| I6～I8 | X、Y、Z 角速度 | °/s |
+| I9～I11 | X、Y、Z 角加速度 | °/s² |
+| I12～I14 | roll / pitch / yaw | ° |
+| I15 | 控制模式：0 停机，1 PWM，2 速度，3 角度 | — |
+| I16 | IMU 数据有效标志：1 有效，0 无效 | — |
 
-`Core/Inc/config.h`：
+数据约每 50 ms 发送一次。六轴 IMU 的 yaw 会漂移。
 
-- ENCODER_CPR=2112是未核实值。正确RPM必须使用输出轴一圈的四倍频计数：资料线数×4×减速比（注意资料定义）。Gitee仓库没有电机参数。
-- 当前直接使用pitch，ANGLE_SIGN=-1取负方向；不再提供roll/pitch切换分支。IMU的pitch转轴需平行电机轴，且正PWM使实际角度增加；更换安装方向需核对角度方向。精简版不自动处理任意斜装。
+## 代码结构
 
-角度环输出目标RPM，速度环输出PWM；速度PID初值25/80/0，角度PID初值1.5/0/0.05，均在main.c的USER CODE BEGIN 2处。
-先整定速度环，再整定角度环。角度模式持续按误差调整；短暂丢帧自动恢复，持续通信故障停机后需r重试、z重新设零。恢复期间不会拿失效角度继续计算PWM，也不会自动重新校准零偏。读取超时由100ms缩短到10ms（HAL的BUSY等待另有25ms上限）。
-主机模型通过不能保证真实电机稳定，尤其CPR、静摩擦和IMU噪声仍需实测。
+```text
+Core/
+├── Src/
+│   ├── main.c       # 初始化、串口命令与控制主流程
+│   ├── motor.c      # PWM 与方向控制
+│   ├── pid.c        # PID 计算
+│   ├── mpu6050.c    # IMU 初始化、原始数据读取与零偏校准
+│   └── ins.c        # 四元数与姿态解算
+└── Inc/             # 配套头文件与 config.h
+tools/               # 构建、烧录脚本
+tests/               # 主机模型测试与 CubeMX 生成区校验
+STM32_Control.ioc    # CubeMX 外设配置
+```
 
-## 验收与版本管理
+`main.c` 的 `USER CODE BEGIN 3` 按收指令 → 读数据 → 角度环 → 速度环 → 发数据的顺序执行。CubeMX 生成的初始化代码保留在原位置。
 
-`./tests/run.ps1`：验证实际Gitee移植代码参与的六组主机模型测试（需要Python和C编译器）。
-角度测试包含持续输出数据时115200串口发送耗时。当前基础版已编译、模型测试通过，尚未烧录验证真实角度效果。
-[逐项验收](docs/ASSESSMENT.md)、[验证记录](docs/VALIDATION.md)。
-GitHub私有仓库：[tatami-007/STM32-Control-Assessment](https://github.com/tatami-007/STM32-Control-Assessment)。
-保留参考来源与ST HAL/CMSIS的许可证，不将Gitee原代码声明为自己原创。
+## 参数与故障处理
 
-## 先理解这三句话
+- `Core/Inc/config.h` 中的 `ENCODER_CPR` 是输出轴一圈的四倍频计数，当前值 **2112 尚未核实**，需确认后才能保证 RPM 准确。`ENCODER_SIGN` 和 `ANGLE_SIGN` 决定计数与角度方向。
+- PID 参数在 `main.c` 的 `USER CODE BEGIN PV`。速度环初值为 `25 / 80 / 0`，角度环为 `1.5 / 0 / 0.05`，按 P、I、D 排列。先整定速度环，再整定角度环。
+- 控制名义周期为 20 ms，PID 使用实际时间间隔。PWM 最大占空比约 50%，电机换向等待 100 ms。
+- 角度模式短暂读失败会暂停输出并重置 I2C，200 ms 内恢复就继续控制，保留零点。持续失联则停机；检查供电和接线后发送 `r`，成功后重新摆平、发送 `z`。
 
-- 编码器测速：这一小段时间的计数 ÷ 每圈计数 ÷ 时间 × 60，得到RPM。
-- 速度PID：目标速度减实际速度，得到误差，再算出PWM。
-- 角度PID：目标角度减实际角度，先算出需要的目标速度，交给速度PID。
+## 测试
+
+```powershell
+.\tests\run.ps1
+```
+
+需要 Python 和主机 GCC，可通过 `-Python`、`-Gcc` 指定路径。测试覆盖 PWM、速度环、角度环、IMU 故障恢复及串口指令。
+
+Debug、Release 构建和六组主机测试已通过，最新固件尚未烧录，实机角度控制仍待验证。详见[验证记录](docs/VALIDATION.md)和[考核验收说明](docs/ASSESSMENT.md)。
+
+## 参考与许可
+
+MPU6050 与 INS 模块移植自 [jiangjiaxu222/mpu6050-code](https://gitee.com/jiangjiaxu222/mpu6050-code)，保留原封装接口，适配说明见 [PORTING.md](docs/mpu6050/PORTING.md)。该仓库未明示许可证；HAL 和 CMSIS 使用各目录附带的许可证。
