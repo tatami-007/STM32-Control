@@ -105,6 +105,6 @@ STM32_Control.ioc    # CubeMX 外设配置
 
 Debug、Release 构建和六组主机测试已通过，最新固件尚未烧录，实机角度控制仍待验证。详见[验证记录](docs/VALIDATION.md)和[考核验收说明](docs/ASSESSMENT.md)。
 
-## 参考与许可
+## 许可证
 
-MPU6050 与 INS 模块移植自 [jiangjiaxu222/mpu6050-code](https://gitee.com/jiangjiaxu222/mpu6050-code)，保留原封装接口，适配说明见 [PORTING.md](docs/mpu6050/PORTING.md)。该仓库未明示许可证；HAL 和 CMSIS 使用各目录附带的许可证。
+HAL 和 CMSIS 使用各目录附带的许可证。
