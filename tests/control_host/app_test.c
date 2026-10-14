@@ -13,6 +13,7 @@ I2C_HandleTypeDef hi2c1;
 static uint8_t *rx;
 static float rpm,rotation,base;
 static int read_fault, fail_reg = -1;
+static int bus_stuck, i2c_resets;
 static char received[4096];
 static void advance(unsigned int ms)
 {
@@ -34,14 +35,15 @@ void HAL_GPIO_WritePin(int a,int b,int c){(void)a;(void)b;(void)c;}
 void Error_Handler(void){abort();}
 uint32_t HAL_I2C_GetError(I2C_HandleTypeDef*p){(void)p;return read_fault||fail_reg>=0?4U:0U;}
 HAL_StatusTypeDef HAL_I2C_Init(I2C_HandleTypeDef*p){(void)p;return HAL_OK;}
-HAL_StatusTypeDef HAL_I2C_DeInit(I2C_HandleTypeDef*p){(void)p;return HAL_OK;}
+HAL_StatusTypeDef HAL_I2C_DeInit(I2C_HandleTypeDef*p){(void)p;bus_stuck=0;++i2c_resets;return HAL_OK;}
 static void encode(uint8_t*p,float value){int16_t n=(int16_t)lroundf(value);p[0]=(uint8_t)((uint16_t)n>>8);p[1]=(uint8_t)n;}
 HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef*p,uint16_t a,uint16_t r,uint16_t s,uint8_t*b,uint16_t n,uint32_t t)
 {(void)p;(void)a;(void)r;(void)s;(void)b;(void)n;(void)t;return HAL_OK;}
 HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef*p,uint16_t a,uint16_t r,uint16_t s,uint8_t*b,uint16_t n,uint32_t t)
 {
- (void)p;(void)a;(void)s;(void)t;
- if(read_fault || r==fail_reg)return HAL_ERROR;
+ (void)p;(void)a;(void)s;
+ if(bus_stuck){advance(25);return HAL_TIMEOUT;} // HAL的BUSY等待独立于传入超时
+ if(read_fault || r==fail_reg){advance(t);return HAL_TIMEOUT;}
  if(r==0x75){b[0]=0x70;return HAL_OK;}
  memset(b,0,n);
  if(r==0x43)return HAL_OK;
@@ -65,7 +67,22 @@ int main(int argc,char**argv)
  if(!strcmp(argv[1],"pwm")){send("pwm:300\n");run(300);check(Motor_Output()==300,"pwm prefix");send("pwm:-300\n");run(30);check(!Motor_Output(),"reverse wait");run(200);check(Motor_Output()==-300,"reverse output");}
  else if(!strcmp(argv[1],"speed")){send("speed:3\n");run(8000);check(fabsf(rpm-3)<0.5f,"forward speed");send("speed:-3\n");run(8000);check(fabsf(rpm+3)<0.5f,"reverse speed");run(35000);check(fabsf(rpm+3)<0.5f,"continuous speed");}
  else if(!strcmp(argv[1],"angle")){send("v\n");run(50);send("z\n");run(100);send("angle:5\n");run(8000);check(fabsf(rotation-5)<1,"angle forward with telemetry timing");send("angle:-5\n");run(8000);check(fabsf(rotation+5)<1,"angle reverse");send("angle:0\n");run(8000);base=5;run(10000);check(fabsf(rotation+base)<1,"tilt compensation");}
- else if(!strcmp(argv[1],"fault")){send("z\n");run(50);send("angle:5\n");run(1000);read_fault=1;run(50);check(Motor_Output()==0,"read failure stops angle");read_fault=0;run(1000);check(Motor_Output()==0,"does not auto resume");}
+ else if(!strcmp(argv[1],"fault")){
+   send("z\n");run(50);send("angle:5\n");run(500);
+   read_fault=1;run(50);check(Motor_Output()==0,"bad sample pauses output");
+   read_fault=0;run(8000);check(fabsf(rotation-5)<1,"short outage resumes with same target and zero");
+   check(strstr(received,"IMU LOST")==0,"short outage does not print permanent stop");
+   send("angle:-5\n");run(100);int resets_before=i2c_resets;
+   bus_stuck=1;run(100);check(i2c_resets>resets_before && ins_data()->raw.valid,"I2C reset clears controller BUSY");
+   run(8000);check(fabsf(rotation+5)<1,"control continues after bus reset");
+   read_fault=1;run(50);send("q");run(20);read_fault=0;run(500);
+   check(!Motor_Output(),"q cancels automatic resume");
+   send("z\n");run(30);send("angle:5\n");run(500);
+   read_fault=1;run(300);check(!Motor_Output() && strstr(received,"IMU LOST >200ms")!=0,"sustained outage stops");
+   read_fault=0;run(1000);check(!Motor_Output(),"late recovery cannot restart motor");
+   send("angle:5\n");run(30);check(strstr(received,"ZERO NOT SET")!=0,"long outage requires new zero");
+   send("z\n");run(30);advance(220);run(30);check(!Motor_Output(),"fresh read after long gap cannot bypass stop");
+ }
  else if(!strcmp(argv[1],"serial")){send("pwm:300\n");run(200);check(strstr(received,"TARGET SET")!=0,"command received");send("speed:nan\n");run(30);check(Motor_Output()==300,"reject NaN");send("unfinishedq");run(5);check(Motor_Output()==0,"q in unfinished line");}
  else if(!strcmp(argv[1],"retry")){
    send("z\n");run(20);check(strstr(received,"IMU INVALID")!=0,"invalid IMU reports failure");

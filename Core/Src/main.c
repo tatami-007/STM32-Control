@@ -63,6 +63,7 @@ static PID speed_pid, angle_pid;
 static uint16_t last_count;
 static int32_t total_count;        // 编码器累计计数
 static uint32_t last_control, last_send;
+static uint32_t last_imu_ok;       // 上一次成功读取姿态的时间
 static float actual_speed, target_speed;  // 实际/目标转速，RPM
 static float actual_angle, target_angle, angle_zero; // 角度，单位度
 static const char *message;       // 等待发给电脑的提示文字
@@ -136,6 +137,7 @@ int main(void)
     PID_Init(&angle_pid, 1.5f, 0, 0.05f, ANGLE_SPEED_MAX);   // 角度外环
     last_count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
     last_control = HAL_GetTick();
+    last_imu_ok = last_control;
     message = "READY; z=ZERO, q=STOP\r\n";
     if (!ins->raw.valid) message = "IMU INVALID; CHECK POWER/WIRING; SEND r\r\n";
   /* USER CODE END 2 */
@@ -164,6 +166,9 @@ int main(void)
 
         // 读取姿态和编码器，计算实际角度、实际转速。
         ins_update();
+        uint32_t imu_now = HAL_GetTick();
+        int imu_expired = imu_now - last_imu_ok > 200U; // 最多允许短暂中断200ms
+        if (ins->raw.valid) last_imu_ok = imu_now;
         float measured_angle = ins->pitch;
         if (ANGLE_USE_ROLL) measured_angle = ins->roll;
         actual_angle = ANGLE_SIGN * measured_angle - angle_zero;
@@ -178,17 +183,24 @@ int main(void)
 
         // 角度外环：把角度误差转换成目标转速。
         if (control_mode == ANGLE) {
-            if (!ins->raw.valid) { // 读取失败不能继续用错误角度驱动电机
+            if (imu_expired) { // 持续失联才退出控制，需要检查接线再重新启动
                 control_mode = STOP;
                 zero_valid = 0;
-                message = "IMU INVALID; STOP; CHECK POWER/WIRING; SEND r\r\n";
+                message = "IMU LOST >200ms; STOP; CHECK WIRING; SEND r\r\n";
+            } else if (!ins->raw.valid) {
+                // 偶发失败：暂停输出，重置I2C；下一次读好后自动继续，零点不变。
+                Motor_Stop();
+                PID_Reset(&speed_pid);
+                PID_Reset(&angle_pid);
+                HAL_I2C_DeInit(&hi2c1);
+                HAL_I2C_Init(&hi2c1);
             } else {
                 target_speed = PID_Update(&angle_pid, target_angle, actual_angle, dt);
             }
         }
 
         // 4. 速度内环：把速度误差转换成PWM。
-        if (control_mode == STOP) {
+        if (control_mode == STOP || (control_mode == ANGLE && !ins->raw.valid)) {
             Motor_Stop();
         } else if (control_mode == PWM) {
             Motor_Set(target_pwm);
@@ -490,6 +502,7 @@ static void Process_Command(const char *command)
         HAL_I2C_Init(&hi2c1);
         ins_init();
         last_control = HAL_GetTick();
+        last_imu_ok = last_control;
         actual_speed = 0;
         message = "IMU READY; SET LEVEL THEN SEND z\r\n";
         if (!ins_data()->raw.valid) message = "IMU INVALID; CHECK POWER/WIRING; SEND r\r\n";

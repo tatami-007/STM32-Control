@@ -18,7 +18,7 @@ extern I2C_HandleTypeDef hi2c1;
 #define MPU6050_REG_WHO_AM_I     0x75
 
 #define MPU6050_ADDR    (0x68 << 1)  // AD0 接地，7 位地址 0x68
-#define MPU6050_TIMEOUT 100          // I2C 超时时间，单位 ms
+#define MPU6050_TIMEOUT 10           // 100kHz读14字节约2ms，故障时不要阻塞100ms
 
 // 满量程对应的灵敏度
 #define MPU6050_ACCEL_SEN 16384.0f  // ±2g：      LSB/g
