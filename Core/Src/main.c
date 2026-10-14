@@ -133,7 +133,7 @@ int main(void)
     HAL_UART_Receive_IT(&huart1, &rx_byte, 1); // 中断接收串口命令
     Motor_Start(&htim2); // 开启PWM，初始输出为0
     if (HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL) != HAL_OK) Error_Handler();
-    ins_init();                      // 按Gitee README：初始化并静止校准
+    ins_init();                      // 初始化IMU并静止校准
     ins_data_t *ins = ins_data();     // 取数据指针，之后通过ins读取结果
     last_count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
     last_control = HAL_GetTick();

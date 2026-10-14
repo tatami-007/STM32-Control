@@ -57,7 +57,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
 )
 
-# 与Gitee示例相同，VOFA用snprintf直接打印浮点，便于学习。
+# VOFA用snprintf输出浮点数据。
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float "LINKER:--undefined=_scanf_float")
 
 # Add project symbols (macros)

@@ -24,7 +24,7 @@ static uint8_t _first;          // 是否为第一次更新
 static int16_t _yaw_round_count;// 偏航角累计圈数
 static float _yaw_last;         // 上一次的偏航角，用于判断跳变
 
-// 直接移植实验室Gitee代码；对外接口保持README的ins_init/ins_data/ins_update。
+// 初始化姿态解算，结果通过ins_data()获取。
 void ins_init(void) {
     _inited = 0;
     memset(&_data, 0, sizeof(_data));
