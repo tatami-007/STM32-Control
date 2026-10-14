@@ -20,8 +20,8 @@ void Motor_Start(TIM_HandleTypeDef *pwm)
 }
 void Motor_Set(int pwm)
 {
-    if (pwm > MOTOR_PWM_LIMIT) pwm = MOTOR_PWM_LIMIT;
-    if (pwm < -MOTOR_PWM_LIMIT) pwm = -MOTOR_PWM_LIMIT;
+    if (pwm > PWM_LIMIT) pwm = PWM_LIMIT;
+    if (pwm < -PWM_LIMIT) pwm = -PWM_LIMIT;
     if (pwm == 0) {
         Motor_Stop();
         return;

@@ -1,13 +1,5 @@
 #include "pid.h"
 #include <math.h>
-void PID_Init(PID *p, float kp, float ki, float kd, float limit)
-{
-    p->kp = kp;
-    p->ki = ki;
-    p->kd = kd;
-    p->limit = fabsf(limit);
-    PID_Reset(p);
-}
 void PID_Reset(PID *p)
 {
     p->integral = 0;

@@ -7,7 +7,6 @@ typedef struct {
     float integral;         // 已累加的I部分
     float last_error;       // 上一次的误差，用于D部分
 } PID;
-void PID_Init(PID *p, float kp, float ki, float kd, float limit);
 void PID_Reset(PID *p);
 float PID_Update(PID *p, float target, float actual, float dt);
 #endif

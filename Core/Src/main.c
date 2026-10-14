@@ -59,7 +59,9 @@ static int control_mode = STOP;   // 当前选择哪一种控制方式
 static int target_pwm;            // pwm指令设置的输出
 static int show_data = 0;         // v显示数值，p暂停显示
 static int zero_valid;            // 是否已经用z设零
-static PID speed_pid, angle_pid;
+// PID参数直接写清名称；积分和上次误差初始为0。
+static PID speed_pid = {.kp = 25, .ki = 80, .kd = 0, .limit = PWM_LIMIT}; // 速度环
+static PID angle_pid = {.kp = 1.5f, .ki = 0, .kd = 0.05f, .limit = ANGLE_SPEED_MAX}; // 角度环
 static uint16_t last_count;
 static int32_t total_count;        // 编码器累计计数
 static uint32_t last_control, last_send;
@@ -133,8 +135,6 @@ int main(void)
     if (HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL) != HAL_OK) Error_Handler();
     ins_init();                      // 按Gitee README：初始化并静止校准
     ins_data_t *ins = ins_data();     // 取数据指针，之后通过ins读取结果
-    PID_Init(&speed_pid, 25, 80, 0, PWM_LIMIT);             // 速度内环
-    PID_Init(&angle_pid, 1.5f, 0, 0.05f, ANGLE_SPEED_MAX);   // 角度外环
     last_count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
     last_control = HAL_GetTick();
     last_imu_ok = last_control;
@@ -149,7 +149,7 @@ int main(void)
     /* USER CODE END WHILE */
 
 /* USER CODE BEGIN 3 */
-    // 收指令：中断收字符，处理收到的整行文字。
+    // 1. 收指令：中断收字符，处理收到的整行文字。
     if (serial_stop) {
         serial_stop = 0;
         command_ready = 0;
@@ -164,14 +164,12 @@ int main(void)
         float dt = (now - last_control) / 1000.0f; // 实际采样间隔，秒
         last_control = now;
 
-        // 读取姿态和编码器，计算实际角度、实际转速。
+        // 2. 读取姿态和编码器，计算实际角度、实际转速。
         ins_update();
         uint32_t imu_now = HAL_GetTick();
         int imu_expired = imu_now - last_imu_ok > 200U; // 最多允许短暂中断200ms
         if (ins->raw.valid) last_imu_ok = imu_now;
-        float measured_angle = ins->pitch;
-        if (ANGLE_USE_ROLL) measured_angle = ins->roll;
-        actual_angle = ANGLE_SIGN * measured_angle - angle_zero;
+        actual_angle = ANGLE_SIGN * ins->pitch - angle_zero; // 当前装置用pitch控制
         uint16_t count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
         int16_t delta = (int16_t)(count - last_count); // 16位差值，兼顾计数溢出
         last_count = count;
@@ -181,7 +179,7 @@ int main(void)
         float filter_weight = dt / (0.04f + dt);
         actual_speed += filter_weight * (rpm - actual_speed); // 平滑测速，减小抖动
 
-        // 角度外环：把角度误差转换成目标转速。
+        // 3. 角度外环：把角度误差转换成目标转速。
         if (control_mode == ANGLE) {
             if (imu_expired) { // 持续失联才退出控制，需要检查接线再重新启动
                 control_mode = STOP;
@@ -199,18 +197,15 @@ int main(void)
             }
         }
 
-        // 4. 速度内环：把速度误差转换成PWM。
-        if (control_mode == STOP || (control_mode == ANGLE && !ins->raw.valid)) {
-            Motor_Stop();
-        } else if (control_mode == PWM) {
-            Motor_Set(target_pwm);
-        } else {
-            float pwm_output = PID_Update(&speed_pid, target_speed, actual_speed, dt);
-            Motor_Set((int)pwm_output);
-        }
+        // 4. 速度内环算出PWM；停机或姿态无效时保持0，最后统一输出。
+        int pwm_output = 0;
+        if (control_mode == PWM) pwm_output = target_pwm;
+        if (control_mode == SPEED || (control_mode == ANGLE && ins->raw.valid))
+            pwm_output = (int)PID_Update(&speed_pid, target_speed, actual_speed, dt);
+        Motor_Set(pwm_output);
     }
 
-    // 发给VOFA：I0/I1角度，I2/I3速度，其余为编码器及IMU数据。
+    // 5. 发给VOFA：I0/I1角度，I2/I3速度，其余为编码器及IMU数据。
     if (message) {
         HAL_UART_Transmit(&huart1, (uint8_t *)message, strlen(message), 50);
         message = NULL;
@@ -512,9 +507,7 @@ static void Process_Command(const char *command)
             message = "IMU INVALID; CHECK POWER/WIRING; SEND r\r\n";
             return;
         }
-        float measured_angle = ins->pitch;
-        if (ANGLE_USE_ROLL) measured_angle = ins->roll;
-        angle_zero = ANGLE_SIGN * measured_angle;
+        angle_zero = ANGLE_SIGN * ins->pitch;
         actual_angle = 0;
         target_angle = 0;
         zero_valid = 1;
