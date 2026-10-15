@@ -1,13 +1,14 @@
-//
-// MPU6050 底层驱动（I2C1：SCL=PB6，SDA=PB7）
-//
+/**
+ * @file mpu6050.c
+ * @brief MPU6050 数据采集与零偏校准，使用 I2C1（PB6/PB7）。
+ */
 
 #include "mpu6050.h"
 
 #include "main.h"
 extern I2C_HandleTypeDef hi2c1;
 
-// 寄存器地址
+/* MPU6050 寄存器地址 */
 #define MPU6050_REG_SMPLRT_DIV   0x19
 #define MPU6050_REG_CONFIG       0x1A
 #define MPU6050_REG_GYRO_CONFIG  0x1B
@@ -17,14 +18,14 @@ extern I2C_HandleTypeDef hi2c1;
 #define MPU6050_REG_PWR_MGMT_1   0x6B
 #define MPU6050_REG_WHO_AM_I     0x75
 
-#define MPU6050_ADDR    (0x68 << 1)  // AD0 接地，7 位地址 0x68
-#define MPU6050_TIMEOUT 10           // 100kHz读14字节约2ms，故障时不要阻塞100ms
+#define MPU6050_ADDR    (0x68 << 1)  /* AD0 接地，7 位地址 0x68 */
+#define MPU6050_TIMEOUT 10           /* I2C 读写超时，单位 ms */
 
-// 满量程对应的灵敏度
-#define MPU6050_ACCEL_SEN 16384.0f  // ±2g：      LSB/g
-#define MPU6050_GYRO_SEN  131.0f    // ±250°/s：  LSB/(°/s)
+/* 满量程对应的灵敏度 */
+#define MPU6050_ACCEL_SEN 16384.0f  /* ±2 g 量程，单位 LSB/g */
+#define MPU6050_GYRO_SEN  131.0f    /* ±250 °/s 量程，单位 LSB/(°/s) */
 
-static float gyro_bias[3];  // 陀螺仪零偏，单位 °/s
+static float gyro_bias[3];  /* 陀螺仪零偏，单位 °/s */
 
 /**
  * @brief 写单个寄存器
@@ -48,16 +49,16 @@ uint8_t bsp_mpu6050_init(void) {
     if (!read_reg(MPU6050_REG_WHO_AM_I, &id, 1)) return 0;
     if (id != 0x68 && id != 0x70) return 0;
 
-    if (!write_reg(MPU6050_REG_PWR_MGMT_1, 0x80)) return 0;   // 复位
+    if (!write_reg(MPU6050_REG_PWR_MGMT_1, 0x80)) return 0;   /* 复位 */
     HAL_Delay(100);
-    if (!write_reg(MPU6050_REG_PWR_MGMT_1, 0x01)) return 0; // X轴PLL时钟
+    if (!write_reg(MPU6050_REG_PWR_MGMT_1, 0x01)) return 0; /* 选择 X 轴陀螺仪 PLL 时钟 */
     HAL_Delay(10);
 
     if (!write_reg(MPU6050_REG_CONFIG, 0x03) ||
-        !write_reg(MPU6050_REG_SMPLRT_DIV, 0x09) || // 100Hz
-        !write_reg(MPU6050_REG_GYRO_CONFIG, 0x00) || // ±250°/s
-        !write_reg(MPU6050_REG_ACCEL_CONFIG, 0x00) || // ±2g
-        !write_reg(0x6C, 0x00)) return 0;          // 全轴启用
+        !write_reg(MPU6050_REG_SMPLRT_DIV, 0x09) || /* 采样率 100 Hz */
+        !write_reg(MPU6050_REG_GYRO_CONFIG, 0x00) || /* 陀螺仪量程 ±250 °/s */
+        !write_reg(MPU6050_REG_ACCEL_CONFIG, 0x00) || /* 加速度计量程 ±2 g */
+        !write_reg(0x6C, 0x00)) return 0;          /* 启用全部测量轴 */
     if (id == 0x70 && !write_reg(0x1D, 0x03)) return 0;
     return 1;
 }
@@ -66,7 +67,7 @@ bsp_mpu6050_data_t bsp_mpu6050_read(void) {
     bsp_mpu6050_data_t ret = {0};
     uint8_t buf[14];
 
-    // 读取：加速度(6) + 温度(2) + 角速度(6)
+    /* 连续读取 14 字节：加速度 6 字节、温度 2 字节、角速度 6 字节。 */
     if (read_reg(MPU6050_REG_ACCEL_XOUT_H, buf, sizeof(buf))) {
         ret.valid = 1;
         int16_t ax = (int16_t)((buf[0] << 8) | buf[1]);
@@ -104,8 +105,8 @@ uint8_t bsp_mpu6050_calibrate(uint16_t samples) {
             sum[0] += (float)(int16_t)((buf[0] << 8) | buf[1]) / MPU6050_GYRO_SEN;
             sum[1] += (float)(int16_t)((buf[2] << 8) | buf[3]) / MPU6050_GYRO_SEN;
             sum[2] += (float)(int16_t)((buf[4] << 8) | buf[5]) / MPU6050_GYRO_SEN;
-        } else return 0;  // 不把读取失败的样本计入零偏分母
-        HAL_Delay(10);    // 100Hz真实新样本，200次约2秒
+        } else return 0;  /* 任一样本读取失败时终止校准，不更新零偏 */
+        HAL_Delay(10);    /* 按 100 Hz 采样，避免重复累计同一测量值 */
     }
 
     gyro_bias[0] = sum[0] / (float)samples;

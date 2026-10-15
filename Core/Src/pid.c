@@ -1,3 +1,7 @@
+/**
+ * @file pid.c
+ * @brief 位置式 PID 计算与状态复位。
+ */
 #include "pid.h"
 #include <math.h>
 void PID_Reset(PID *p)
@@ -7,17 +11,17 @@ void PID_Reset(PID *p)
 }
 float PID_Update(PID *p, float target, float actual, float dt)
 {
-    // 时间或数据无效时输出0。
+    /* 采样周期或输入无效时返回零输出。 */
     if (dt <= 0 || dt >= 0.2f || !isfinite(dt) || !isfinite(target) || !isfinite(actual)) return 0;
 
-    // P看当前误差，I累加误差，D看误差变化。
+    /* 分别计算比例项、积分项和误差微分项。 */
     float error = target - actual;
     float p_output = p->kp * error;
     p->integral += p->ki * error * dt;
     float d_output = p->kd * (error - p->last_error) / dt;
     p->last_error = error;
 
-    // 积分和最终输出都限制在允许范围内。
+    /* 对积分项和总输出分别限幅。 */
     if (p->integral > p->limit) p->integral = p->limit;
     if (p->integral < -p->limit) p->integral = -p->limit;
     float output = p_output + p->integral + d_output;

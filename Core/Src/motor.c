@@ -1,3 +1,7 @@
+/**
+ * @file motor.c
+ * @brief TB6612 电机方向与 PWM 输出控制。
+ */
 #include "motor.h"
 #include "main.h"
 
@@ -26,11 +30,12 @@ void Motor_Set(int pwm)
         Motor_Stop();
         return;
     }
-    int direction = 1; // 正转为1，反转为-1
+    int direction = 1; /* 正转为 1，反转为 -1 */
     if (pwm < 0) direction = -1;
     if (output && direction != last_direction) Motor_Stop();
+    /* 换向前保持零输出至少 100 ms。 */
     if (last_direction && direction != last_direction && HAL_GetTick() - stopped_at < 100U) return;
-    // 两个方向引脚一高一低；PWM占空比始终取正数。
+    /* 方向由 PB0、PB1 控制，比较寄存器写入 PWM 幅值。 */
     int duty = pwm;
     if (direction == 1) {
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);

@@ -54,25 +54,24 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-enum { STOP, PWM, SPEED, ANGLE };   // 停机、直接PWM、速度PID、角度PID
-static int control_mode = STOP;   // 当前选择哪一种控制方式
-static int target_pwm;            // pwm指令设置的输出
-static int show_data = 0;         // v显示数值，p暂停显示
-static int zero_valid;            // 是否已经用z设零
-// PID参数直接写清名称；积分和上次误差初始为0。
-static PID speed_pid = {.kp = 25, .ki = 80, .kd = 0, .limit = PWM_LIMIT}; // 速度环
-static PID angle_pid = {.kp = 1.5f, .ki = 0, .kd = 0.05f, .limit = ANGLE_SPEED_MAX}; // 角度环
+enum { STOP, PWM, SPEED, ANGLE };   /* 控制模式：停机、PWM、速度闭环、角度闭环 */
+static int control_mode = STOP;   /* 当前控制模式 */
+static int target_pwm;            /* PWM 模式的有符号输出 */
+static int show_data = 0;         /* 遥测开关：v 开启，p 关闭 */
+static int zero_valid;            /* 角度零点有效标志 */
+static PID speed_pid = {.kp = 25, .ki = 80, .kd = 0, .limit = PWM_LIMIT}; /* 速度环 */
+static PID angle_pid = {.kp = 1.5f, .ki = 0, .kd = 0.05f, .limit = ANGLE_SPEED_MAX}; /* 角度环 */
 static uint16_t last_count;
-static int32_t total_count;        // 编码器累计计数
+static int32_t total_count;        /* 编码器累计计数 */
 static uint32_t last_control, last_send;
-static uint32_t last_imu_ok;       // 上一次成功读取姿态的时间
-static float actual_speed, target_speed;  // 实际/目标转速，RPM
-static float actual_angle, target_angle, angle_zero; // 角度，单位度
-static const char *message;       // 等待发给电脑的提示文字
+static uint32_t last_imu_ok;       /* 上次有效姿态数据的时间，单位 ms */
+static float actual_speed, target_speed;  /* 实际转速、目标转速，单位 RPM */
+static float actual_angle, target_angle, angle_zero; /* 实际角度、目标角度、零点偏置，单位 ° */
+static const char *message;       /* 待发送的状态消息 */
 
-/* 收到一行再交给main处理；中断中不做PID或浮点运算。 */
+/* 中断负责接收字符，主循环负责解析完整命令。 */
 static uint8_t rx_byte;
-static char rx_input[32];          // 收到的一行命令
+static char rx_input[32];          /* 串口命令缓冲区 */
 static unsigned int rx_length;
 static volatile int command_ready, serial_stop;
 static int rx_discard;
@@ -130,11 +129,11 @@ int main(void)
   /* USER CODE BEGIN 2 */
     HAL_NVIC_SetPriority(USART1_IRQn, 2, 0);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
-    HAL_UART_Receive_IT(&huart1, &rx_byte, 1); // 中断接收串口命令
-    Motor_Start(&htim2); // 开启PWM，初始输出为0
+    HAL_UART_Receive_IT(&huart1, &rx_byte, 1); /* 启动单字节中断接收 */
+    Motor_Start(&htim2); /* 启动 PWM，初始占空比为 0 */
     if (HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL) != HAL_OK) Error_Handler();
-    ins_init();                      // 初始化IMU并静止校准
-    ins_data_t *ins = ins_data();     // 取数据指针，之后通过ins读取结果
+    ins_init();                      /* 初始化 IMU 并校准陀螺仪零偏 */
+    ins_data_t *ins = ins_data();     /* 姿态解算结果 */
     last_count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
     last_control = HAL_GetTick();
     last_imu_ok = last_control;
@@ -149,43 +148,43 @@ int main(void)
     /* USER CODE END WHILE */
 
 /* USER CODE BEGIN 3 */
-    // 1. 收指令：中断收字符，处理收到的整行文字。
+    /* 处理停机请求和完整串口命令。 */
     if (serial_stop) {
         serial_stop = 0;
         command_ready = 0;
         Process_Command("q");
     }
     if (command_ready) {
-        Process_Command(rx_input); // command_ready为1时，中断暂停写入这个数组
+        Process_Command(rx_input); /* 处理期间，接收中断不改写命令缓冲区 */
         command_ready = 0;
     }
     uint32_t now = HAL_GetTick();
     if (now - last_control >= CONTROL_MS) {
-        // 2. 读取姿态和编码器，计算实际角度、实际转速。
+        /* 采集姿态和编码器数据，计算角度与转速。 */
         ins_update();
         uint32_t imu_now = HAL_GetTick();
-        float dt = (imu_now - last_control) / 1000.0f; // 采样间隔包含I2C读取耗时
+        float dt = (imu_now - last_control) / 1000.0f; /* 实际采样周期，单位 s，包含 I2C 读取耗时 */
         last_control = imu_now;
-        int imu_expired = imu_now - last_imu_ok > 200U; // 最多允许短暂中断200ms
+        int imu_expired = imu_now - last_imu_ok > 200U; /* 姿态数据连续失效超过 200 ms */
         if (ins->raw.valid) last_imu_ok = imu_now;
-        actual_angle = ANGLE_SIGN * ins->pitch - angle_zero; // 当前装置用pitch控制
+        actual_angle = ANGLE_SIGN * ins->pitch - angle_zero; /* 以俯仰角计算相对零点的角度 */
         uint16_t count = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
-        int16_t delta = (int16_t)(count - last_count); // 16位差值，兼顾计数溢出
+        int16_t delta = (int16_t)(count - last_count); /* 有符号差值处理 16 位计数器回绕 */
         last_count = count;
         total_count += delta * ENCODER_SIGN;
-        float turns = delta * ENCODER_SIGN / ENCODER_CPR; // 这段时间转了几圈
-        float rpm = turns / dt * 60.0f; // 每秒圈数乘60，得到每分钟圈数
+        float turns = delta * ENCODER_SIGN / ENCODER_CPR; /* 采样周期内的输出轴转数 */
+        float rpm = turns / dt * 60.0f; /* 输出轴转速，单位 RPM */
         float filter_weight = dt / (0.04f + dt);
-        actual_speed += filter_weight * (rpm - actual_speed); // 平滑测速，减小抖动
+        actual_speed += filter_weight * (rpm - actual_speed); /* 一阶低通滤波，时间常数 40 ms */
 
-        // 3. 角度外环：把角度误差转换成目标转速。
+        /* 角度外环根据角度误差生成目标转速。 */
         if (control_mode == ANGLE) {
-            if (imu_expired) { // 持续失联才退出控制，需要检查接线再重新启动
+            if (imu_expired) { /* 数据持续失效时停机并清除零点 */
                 control_mode = STOP;
                 zero_valid = 0;
                 message = "IMU LOST >200ms; STOP; CHECK WIRING; SEND r\r\n";
             } else if (!ins->raw.valid) {
-                // 偶发失败：暂停输出，重置I2C；下一次读好后自动继续，零点不变。
+                /* 短时读取失败时暂停输出并重置 I2C，恢复后沿用原零点。 */
                 Motor_Stop();
                 PID_Reset(&speed_pid);
                 PID_Reset(&angle_pid);
@@ -196,7 +195,7 @@ int main(void)
             }
         }
 
-        // 4. 速度内环算出PWM；停机或姿态无效时保持0，最后统一输出。
+        /* 速度内环计算 PWM；停机或角度模式下姿态无效时输出为 0。 */
         int pwm_output = 0;
         if (control_mode == PWM) pwm_output = target_pwm;
         if (control_mode == SPEED || (control_mode == ANGLE && ins->raw.valid))
@@ -204,7 +203,7 @@ int main(void)
         Motor_Set(pwm_output);
     }
 
-    // 5. 发给VOFA：I0/I1角度，I2/I3速度，其余为编码器及IMU数据。
+    /* 状态消息优先发送；遥测使用 FireWater 格式，每 50 ms 发送一帧。 */
     if (message) {
         HAL_UART_Transmit(&huart1, (uint8_t *)message, strlen(message), 50);
         message = NULL;
@@ -468,10 +467,12 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/* 只保留考核会用到的命令；所有目标命令添加换行。 */
+/**
+ * @brief 解析串口命令并更新控制目标。
+ * @param command 以空字符结尾、不含行结束符的命令字符串。
+ */
 static void Process_Command(const char *command)
 {
-    // strcmp返回0表示两段文字相同，例如收到的文字是p。
     if (strcmp(command, "p") == 0) {
         show_data = 0;
         message = "PAUSED\r\n";
@@ -487,7 +488,7 @@ static void Process_Command(const char *command)
         target_speed = 0;
         message = "STOP\r\n";
     } else if (strcmp(command, "r") == 0) {
-        // 重新初始化和静止校准；恢复成功后仍停机，须重新发送z设零。
+        /* 重新初始化并校准 IMU，清除零点后保持停机。 */
         control_mode = STOP;
         target_speed = 0;
         zero_valid = 0;
@@ -513,8 +514,7 @@ static void Process_Command(const char *command)
         control_mode = ANGLE;
         message = "ZERO SET; HOLD\r\n";
     } else {
-        // sscanf把命令里的数字读进value。只读到一个数字才执行。
-        // extra用于检查数字后是否还有多余字符。
+        /* 仅接受一个数值参数，拒绝数值后的额外字符。 */
         float value;
         char extra;
         if (sscanf(command, "pwm:%f%c", &value, &extra) == 1 && fabsf(value) <= PWM_LIMIT) {
@@ -536,13 +536,16 @@ static void Process_Command(const char *command)
         }
         message = "TARGET SET\r\n";
     }
-    // 切换目标时清除上一次PID积分，避免旧输出影响新目标。
+    /* 更新控制目标后，清除两个 PID 的积分和历史误差。 */
     Motor_Stop();
     PID_Reset(&speed_pid);
     PID_Reset(&angle_pid);
 }
 
-/* 串口回调：收满一行置标志；q立即请求停机。 */
+/**
+ * @brief 缓存串口命令，收到 q 或 Q 时立即置停机请求标志。
+ * @param uart 产生接收完成中断的串口句柄。
+ */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
     if (uart != &huart1) return;
@@ -551,8 +554,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
         rx_length = 0;
         rx_discard = 0;
     }
-    else if (command_ready) { // main正在处理上一条，等收到提示后再发下一条
-        // 暂停收新命令，q仍可请求停机。
+    else if (command_ready) {
+        /* 保留待处理命令，仅接受 q 或 Q 停机请求。 */
     } else if (rx_byte == '\n' || rx_byte == '\r') {
         if (rx_length && !rx_discard) {
             rx_input[rx_length] = 0;
@@ -569,6 +572,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
     }
     if (HAL_UART_Receive_IT(&huart1, &rx_byte, 1) != HAL_OK) serial_stop = 1;
 }
+/**
+ * @brief 串口接收出错时请求停机，并重新启动中断接收。
+ * @param uart 产生错误中断的串口句柄。
+ */
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
     if (uart != &huart1) return;
