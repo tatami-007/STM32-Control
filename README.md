@@ -103,7 +103,7 @@ STM32_Control.ioc    # CubeMX 外设配置
 
 需要 Python 和主机 GCC，可通过 `-Python`、`-Gcc` 指定路径。测试覆盖 PWM、速度环、角度环、IMU 故障恢复及串口指令。
 
-Debug、Release 构建和六组主机测试已通过，最新固件尚未烧录，实机角度控制仍待验证。详见[验证记录](docs/VALIDATION.md)和[考核验收说明](docs/ASSESSMENT.md)。
+主机测试用于检查控制逻辑，实际控制效果需在装置上验证。
 
 ## 许可证
 
