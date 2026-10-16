@@ -67,4 +67,4 @@
 
 - 两个实物演示视频、专业/班级/姓名尚缺。
 - OLED/按键按使用者要求跳过。
-- 私有GitHub仓库已创建并推送：https://github.com/tatami-007/STM32-Control-Assessment 。
+- GitHub仓库已创建并推送：https://github.com/tatami-007/STM32-Control 。
