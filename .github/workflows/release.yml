@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish source release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          STM32 电机与姿态控制源码版本。
+
+          - PWM 正反转与调速。
+          - 编码器测速、PID 速度闭环与 VOFA 目标转速设置。
+          - IMU 数据采集、姿态解算与目标角度保持。
+          - 接线、串口操作顺序及数据通道见 README。
+
+          控制参数需结合实际装置调整，当前角度保持的双向响应仍在调试。
+          NOTES
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
